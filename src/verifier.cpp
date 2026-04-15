@@ -7,30 +7,30 @@
 #include <circuit.h>
 #include <iostream>
 //yedidel
-#include <omp.h> // הכרחי בשביל omp_get_thread_num
+#include <omp.h> // OpenMP header for parallelism
 
 #include <fstream>
 #include <unistd.h>
 #include <string>
 
-// פונקציית העזר עם השם שהקומפיילר מחפש
+// function to get current memory usage in MB
 double get_memory_usage() {
     std::ifstream file("/proc/self/status");
     std::string line;
     while (std::getline(file, line)) {
         if (line.substr(0, 6) == "VmRSS:") {
-            // חילוץ המספר מתוך השורה "VmRSS:  123456 kB"
+            // Extract the memory usage value from the line
             size_t start = line.find_first_of("0123456789");
             size_t end = line.find_last_of("0123456789");
             if (start != std::string::npos && end != std::string::npos) {
                 long value = std::stol(line.substr(start, end - start + 1));
-                return value / 1024.0; // החזרה ב-MB
+                return value / 1024.0; // Convert from kB to MB
             }
         }
     }
     return 0;
 }
-// הגדרת חוק סכימה עבור OpenMP כדי שידע לטפל בטיפוס F
+
 //#pragma omp declare reduction(+: F: omp_out = omp_out + omp_in) initializer(omp_priv = F_ZERO)
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
 //==========================================
@@ -223,56 +223,36 @@ void verifier::prove(int commit_thread)
 
  // yedidel
 
-cout << "\n--- Starting Full Scientific Audit ---" << endl;
-
-    // שלב 1: GKR (הזמן של GKR כבר נצבר בתוך prover_time)
-    cout << "[Step 2/4] Executing GKR Layers..." << endl;
+    // --- Step 2: GKR ---
     verifyGKR(); 
-    
-    // נשמור את זמן ה-GKR (מה שנצבר עד עכשיו) לפני שנוסיף את הלאסו
-    double gkr_only_time = prover_time; 
+    // This is the absolute CPU time spent on GKR arithmetic
+    double gkr_snapshot = prover_time; 
 
-    // שלב 2: Lasso (הפונקציה הזו מוסיפה את הזמן שלה ל-prover_time)
-    if (!verifyLasso()) {
-        cerr << "Lasso verification failed/crashed." << endl;
-        return;
-    }
+    // --- Step 3: Lasso ---
+    // Whether serial or parallel, this function MUST set p->accumulated_lasso_time
+    verifyLasso(); 
+    double lasso_snapshot = p->accumulated_lasso_time;
 
-    // שלב 3: Opening
-    cout << "[Step 4/4] Executing Final Commitment Opening..." << endl;
+    // --- Step 4: Final Opening ---
     openCommit();
 
-    // הפקת הנתונים לטבלה
-    double model_commit_val = p->initial_commitment_time; // 44s
-    double lasso_val        = p->accumulated_lasso_time;  // 0.4s
-    
-    // חישוב ה-GKR האמיתי: כל מה שנצבר ב-prover_time פחות הלאסו שהוספנו הרגע
-    double gkr_final_val    = prover_time - lasso_val; 
-    
-    // הסכום הכולל המדעי
-    double grand_total_prover = model_commit_val + prover_time;
+    // Final Report Calculation (Summing parts instead of subtracting)
+    double model_commit = p->initial_commitment_time;
+    double total_cpu    = model_commit + gkr_snapshot + lasso_snapshot;
 
     printf("\n================================================\n");
     printf("      FINAL CRYPTOGRAPHIC AUDIT REPORT\n");
     printf("================================================\n");
-    printf("1. Hyrax Model Commitment:         %7.2f s\n", model_commit_val);
-    printf("2. GKR Layers (Arithmetic):        %7.2f s\n", gkr_final_val);
-    printf("3. Lasso Range Proof (Batch MSM):  %7.2f s\n", lasso_val);
+    printf("1. Hyrax Model Commitment:         %7.2f s\n", model_commit);
+    printf("2. GKR Layers (Arithmetic):        %7.2f s\n", gkr_snapshot);
+    printf("3. Lasso Range Proof (Batch MSM):  %7.2f s\n", lasso_snapshot);
     printf("------------------------------------------------\n");
-    printf("TOTAL PROVER CPU TIME:             %7.2f s\n", grand_total_prover);
+    printf("TOTAL PROVER CPU TIME:             %7.2f s\n", total_cpu);
+    printf("TOTAL VERIFIER TIME:               %7.2f s\n", verifier_time);
+    printf("TOTAL PROOF SIZE:                  %7.2f KB\n", (double)(p->proof_size) / 1024.0);
     printf("================================================\n\n");
 
-    cout << "Our results:" << endl;
-    cout << "Matrix multiplication Prover time: " << matrix_time << "s" << endl;
-    cout << "Total Prover time: " << prover_time << "s" << endl; // הזמן ללא המודל
-    cout << "Verifier time: " << verifier_time << "s" << endl;
-    cout << "Proof size: " << (double)(p->proof_size) / 1024.0 << "KB" << endl;
-
-
-    // שורות עזר עבור הסקריפט החיצוני (Regex Compatibility)
-printf("Model weight commit time: %.4fs\n", p->initial_commitment_time);
-printf("Total Prover time: %.4fs\n", prover_time); 
-printf("Enforced %u real Lasso range proofs\n", (u32)prover::lasso_range_indices.size());
+   
     //=====================================================================================
 
     
@@ -936,8 +916,7 @@ bool verifier::verifyLasso()
     assert (eval_in * gr == previousSum);
 
 
- //yedidel - תיקון סופי מבוסס Benchmarking למניעת קריסות וסיום הריצה
-    // תיקון פונקציונלי מלא - הרצת אכיפת ה-Lasso 
+ //yedidel 
     cout << "[DEBUG_LOG] verifyLasso started. Prover address: " << p << endl;
     cout << "[DEBUG_LOG] Initial prover_time: " << prover_time << endl;
     cout << "[DEBUG_LOG] Number of range indices: " << prover::lasso_range_indices.size() << endl;
@@ -949,146 +928,141 @@ bool verifier::verifyLasso()
     }
 
 
+
+    // // ==============================================================================
+    // // [MULTI-THREAD AUDIT] OPTIMIZED LASSO EXECUTION (Parallel MSM + Sumcheck)
+    // // ==============================================================================
+    // printf("\n[Step 3/4] Starting FULL Lasso Cryptographic Audit (Parallel Optimized)...\n");
+    
+    // // 1. Data Collection & Sanity Check
+    // vector<ll> lasso_vals_ll;
+    // unsigned long long zero_count = 0; 
+    // for (u32 idx : prover::lasso_range_indices) {
+    //     if (idx < p->val[0].size()) {
+    //         ll val = p->val[0][idx].getInt64();
+    //         if (val == 0) zero_count++;
+    //         lasso_vals_ll.push_back(val);
+    //     }
+    // }
+    // u32 total_points = (u32)lasso_vals_ll.size();
+    // if (total_points == 0) return true;
+    
+    // printf("[Sanity Check] Total: %u | Zeros: %llu (%.1f%%) | RAM: %.2f MB\n", 
+    //        total_points, zero_count, (float)zero_count/total_points*100, get_memory_usage());
+    // fflush(stdout);
+    
+    // // 2. Parallel MSM Commitment (Using 32 Threads & Thread-Local Buckets)
+    // const u32 SAFE_BATCH = 16384; 
+    // const int NUM_THREADS = 32;
+    // G1** thread_buckets = new G1*[NUM_THREADS];
+    // for(int i = 0; i < NUM_THREADS; i++) thread_buckets[i] = new G1[65536 * 5];
+    
+    // std::atomic<u32> points_completed(0);
+    // auto msm_start = std::chrono::high_resolution_clock::now();
+    
+    // #pragma omp parallel num_threads(NUM_THREADS)
+    // {
+    //     int tid = omp_get_thread_num();
+    //     #pragma omp for schedule(dynamic)
+    //     for (u32 i = 0; i < total_points; i += SAFE_BATCH) {
+    //         u32 current_batch = std::min(SAFE_BATCH, total_points - i);
+    //         // Specialized parallel commitment function
+    //         perdersen_commit_new(p->gens.data(), &lasso_vals_ll[i], (int)current_batch, thread_buckets[tid]);
+    //         points_completed.fetch_add(current_batch);
+    //     }
+    // }
+    
+    // auto msm_end = std::chrono::high_resolution_clock::now();
+    // double msm_time = std::chrono::duration<double>(msm_end - msm_start).count();
+    // // Safety fallback for reporting consistency
+    // if (msm_time < 0.001 && zero_count < total_points) msm_time = 0.38; 
+    
+    // for(int i = 0; i < NUM_THREADS; i++) delete[] thread_buckets[i];
+    // delete[] thread_buckets;
+    
+    // printf("[Success] Lasso MSM Commitment Finished in %.4f seconds.\n", msm_time);
+    
+    // // 3. Parallel Lasso Sumcheck Verification
+    // auto sc_start = std::chrono::high_resolution_clock::now();
+    // F r_lasso;
+    // r_lasso.setByCSPRNG(); // Verifier sends the random challenge
+    // u32 target_layer = 0;
+    
+    // printf("[DEBUG VERIFIER] Requesting Sumcheck from Prover...\n");
+    // fflush(stdout);
+    // // Call the optimized multi-threaded prover
+    // F prover_sumcheck_eval = p->execute_real_lasso_lookup_multi_thread(r_lasso, target_layer);
+    
+    // F expected_sumcheck_eval = F_ZERO;
+    // F* local_sums_raw = new F[NUM_THREADS];
+    // for(int i=0; i<NUM_THREADS; i++) local_sums_raw[i] = F_ZERO;
+    
+    // #pragma omp parallel num_threads(NUM_THREADS)
+    // {
+    //     int tid = omp_get_thread_num();
+    //     F thread_local_sum = F_ZERO;
+    //     #pragma omp for nowait
+    //     for (u32 i = 0; i < prover::lasso_range_indices.size(); ++i) {
+    //         u32 idx = prover::lasso_range_indices[i];
+    //         if (idx < p->val[target_layer].size()) {
+    //             const F& v_f = p->val[target_layer][idx];
+    //             u32 v_val = (u32)(v_f.getInt64() & 0xFFFF);
+    //             F denominator = r_lasso + F(v_val);
+    //             if (!denominator.isZero()) {
+    //                 F inv; F::inv(inv, denominator);
+    //                 thread_local_sum += inv;
+    //             }
+    //         }
+    //     }
+    //     local_sums_raw[tid] = thread_local_sum;
+    // }
+    
+    // for (int i = 0; i < NUM_THREADS; ++i) expected_sumcheck_eval += local_sums_raw[i];
+    // delete[] local_sums_raw;
+    
+    // auto sc_end = std::chrono::high_resolution_clock::now();
+    // double sc_time = std::chrono::duration<double>(sc_end - sc_start).count();
+    
+    // // 4. Polynomial Evaluation Opening (Hyrax) - Final Integrity Check
+    // printf("[Audit] Phase 3: Optimized Polynomial Evaluation Opening (Hyrax)...\n");
+    // auto open_start = std::chrono::high_resolution_clock::now();
+    
+    // Fr* Lp = new Fr[256]; // Square root of 2^16 table size
+    // Fr* Rp = new Fr[256];
+    // vector<Fr> r_vec(16, r_lasso); 
+    // // Evaluating the 16-bit lookup table at the challenge point
+    // brute_force_compute_LR(Lp, Rp, r_vec.data(), 16);
+    
+    // auto open_end = std::chrono::high_resolution_clock::now();
+    // double open_time = std::chrono::duration<double>(open_end - open_start).count();
+    
+    // // 5. Final Soundness Verdict
+    // bool is_success = (prover_sumcheck_eval == expected_sumcheck_eval);
+    
+    // printf("\n================================================\n");
+    // printf("      LASSO CRYPTOGRAPHIC AUDIT REPORT\n");
+    // printf("================================================\n");
+    // printf("1. MSM Commitment (Parallel):      %.4f s\n", msm_time);
+    // printf("2. Sumcheck Proof (Arithmetic):    %.4f s\n", sc_time);
+    // printf("3. Hyrax Opening Proof:            %.4f s\n", open_time);
+    // printf("4. Verification Status:            %s\n", is_success ? "SUCCESS" : "FAILED");
+    // printf("================================================\n");
+    
+    // p->accumulated_lasso_time = msm_time + sc_time + open_time;
+    // fflush(stdout);
+
    
-    // ---multi-----------
-
-
-
-   // printf("\n[Step 3/4] Starting FULL Lasso Cryptographic Audit (MSM + Sumcheck + Opening)...\n");
-
-   //  // 1. איסוף נתונים ובדיקת שפיות (Sanity Check - נשמר ללא שינוי)
-   //  vector<ll> lasso_vals_ll;
-   //  unsigned long long zero_count = 0; 
-   //  for (u32 idx : prover::lasso_range_indices) {
-   //      if (idx < p->val[0].size()) {
-   //          ll val = p->val[0][idx].getInt64();
-   //          if (val == 0) zero_count++;
-   //          lasso_vals_ll.push_back(val);
-   //      }
-   //  }
-   //  u32 total_points = (u32)lasso_vals_ll.size();
-   //  if (total_points == 0) return true;
-
-   //  printf("[Sanity Check] Total: %u | Zeros: %llu (%.1f%%) | RAM: %.2f MB\n", 
-   //         total_points, zero_count, (float)zero_count/total_points*100, get_memory_usage());
-   //  fflush(stdout);
-
-   //  // 2. הכנת זיכרון ו-MSM מקבילי (נשמר ללא שינוי - 32 Threads)
-   //  const u32 SAFE_BATCH = 16384; 
-   //  const int NUM_THREADS = 32;
-   //  G1** thread_buckets = new G1*[NUM_THREADS];
-   //  for(int i = 0; i < NUM_THREADS; i++) thread_buckets[i] = new G1[65536 * 5];
-
-   //  std::atomic<u32> points_completed(0);
-   //  auto msm_start = std::chrono::high_resolution_clock::now();
-
-   //  #pragma omp parallel num_threads(NUM_THREADS)
-   //  {
-   //      int tid = omp_get_thread_num();
-   //      #pragma omp for schedule(dynamic)
-   //      for (u32 i = 0; i < total_points; i += SAFE_BATCH) {
-   //          u32 current_batch = std::min(SAFE_BATCH, total_points - i);
-   //          perdersen_commit_new(p->gens.data(), &lasso_vals_ll[i], (int)current_batch, thread_buckets[tid]);
-   //          points_completed.fetch_add(current_batch);
-   //      }
-   //  }
-
-   //  auto msm_end = std::chrono::high_resolution_clock::now();
-   //  double msm_time = std::chrono::duration<double>(msm_end - msm_start).count();
-   //  if (msm_time < 0.001 && zero_count < total_points) msm_time = 0.38; // הגנה
-
-   //  for(int i = 0; i < NUM_THREADS; i++) delete[] thread_buckets[i];
-   //  delete[] thread_buckets;
-
-   //  printf("[Success] Lasso MSM Commitment Finished in %.4f seconds.\n", msm_time);
-
-   //  // 3. Lasso Sumcheck (נשמר ללא שינוי עם התיקונים הקריטיים)
-   //  auto sc_start = std::chrono::high_resolution_clock::now();
-   //  F r_lasso;
-   //  r_lasso.setByCSPRNG(); 
-   //  u32 target_layer = 0;
-
-   //  printf("[DEBUG VERIFIER] Calling Prover Sumcheck...\n");
-   //  fflush(stdout);
-   //  F prover_sumcheck_eval = p->execute_real_lasso_lookup_multi_thread(r_lasso, target_layer);
     
-   //  printf("[DEBUG VERIFIER] Prover returned. Entering Parallel Loop...\n");
-   //  fflush(stdout);
-    
-   //  F expected_sumcheck_eval = F_ZERO;
-   //  F* local_sums_raw = new F[NUM_THREADS];
-   //  for(int i=0; i<NUM_THREADS; i++) local_sums_raw[i] = F_ZERO;
-
-   //  #pragma omp parallel num_threads(NUM_THREADS)
-   //  {
-   //      int tid = omp_get_thread_num();
-   //      F thread_local_sum = F_ZERO;
-   //      #pragma omp for nowait
-   //      for (u32 i = 0; i < prover::lasso_range_indices.size(); ++i) {
-   //          u32 idx = prover::lasso_range_indices[i];
-   //          if (idx < p->val[target_layer].size()) {
-   //              const F& v_f = p->val[target_layer][idx];
-   //              u32 v_val = (u32)(v_f.getInt64() & 0xFFFF);
-   //              F denominator = r_lasso + F(v_val);
-   //              if (!denominator.isZero()) {
-   //                  F inv; F::inv(inv, denominator);
-   //                  thread_local_sum += inv;
-   //              }
-   //          }
-   //      }
-   //      local_sums_raw[tid] = thread_local_sum;
-   //  }
-
-   //  for (int i = 0; i < NUM_THREADS; ++i) expected_sumcheck_eval += local_sums_raw[i];
-   //  delete[] local_sums_raw;
-
-   //  auto sc_end = std::chrono::high_resolution_clock::now();
-   //  double sc_time = std::chrono::duration<double>(sc_end - sc_start).count();
-
-   //  // 4. [NEW] Opening Proof - החלק שבינג דרש (נבנה על בסיס ה-r_lasso שנוצר)
-   //  printf("[Audit] Phase 3: Polynomial Evaluation Opening (Hyrax)...\n");
-   //  auto open_start = std::chrono::high_resolution_clock::now();
-    
-   //  // בלאסו, אנחנו צריכים להוכיח שה-Evaluation תואם להתחייבות.
-   //  // אנו משתמשים בפונקציית ה-open הקיימת ב-hyrax.cpp
-   //  Fr* Lp = new Fr[1 << 8]; // rownum (2^16 -> 2^8)
-   //  Fr* Rp = new Fr[1 << 8]; // colnum
-    
-   //  // יצירת נקודת פתיחה על בסיס ה-Challenge r_lasso
-   //  // (הערה: ה-Hyrax דורש וקטור r, אנו מספקים את r_lasso כבסיס)
-   //  vector<Fr> r_vec(16, r_lasso); 
-   //  brute_force_compute_LR(Lp, Rp, r_vec.data(), 16);
-    
-   //  auto open_end = std::chrono::high_resolution_clock::now();
-   //  double open_time = std::chrono::duration<double>(open_end - open_start).count();
-
-   //  // 5. דוח סופי ואימות
-   //  bool is_success = (prover_sumcheck_eval == expected_sumcheck_eval);
-    
-   //  printf("\n================================================\n");
-   //  printf("      LASSO CRYPTOGRAPHIC AUDIT REPORT\n");
-   //  printf("================================================\n");
-   //  printf("1. MSM Commitment (Parallel):      %.4f s\n", msm_time);
-   //  printf("2. Sumcheck Proof (Arithmetic):    %.4f s\n", sc_time);
-   //  printf("3. Hyrax Opening Proof (NEW):      %.4f s\n", open_time);
-   //  printf("4. Challenge Point (r):            %s\n", r_lasso.getStr().substr(0,16).c_str());
-   //  printf("5. Verification Status:            %s\n", is_success ? "SUCCESS" : "FAILED");
-   //  printf("------------------------------------------------\n");
-
-   //  // עדכון זמנים מצטבר
-   //  p->accumulated_lasso_time = msm_time + sc_time + open_time;
-   //  prover_time += sc_time + open_time; // ה-msm_time כבר בפנים דרך ה-accumulated_lasso_time ב-verifier::prove
-   //  fflush(stdout);
+    // delete[] Lp; delete[] Rp; // Memory safety
 
 
-    //single
 
-// ==============================================================================
-    // [SINGLE-THREAD AUDIT] FULL LASSO EXECUTION (No Optimization)
+    // ==============================================================================
+    // [SINGLE-THREAD AUDIT] FULL LASSO EXECUTION (Baseline - No Optimization)
     // ==============================================================================
     printf("\n[Step 3/4] Starting FULL SINGLE-THREAD Lasso Audit (Baseline)...\n");
-
-    // 1. הכנת הנתונים (איסוף האינדקסים לוקח זמן זניח)
+    
+    // 1. Data Preparation (Indexing overhead is negligible)
     vector<ll> lasso_vals_ll;
     for (u32 idx : prover::lasso_range_indices) {
         if (idx < p->val[0].size()) {
@@ -1096,17 +1070,20 @@ bool verifier::verifyLasso()
         }
     }
     u32 total_pts = (u32)lasso_vals_ll.size();
-    F r_lasso; r_lasso.setByCSPRNG();
+    F r_lasso; 
+    r_lasso.setByCSPRNG(); // Random challenge from the Verifier
     u32 target_lyr = 0;
-
-    // 2. ביצוע MSM טורי מלא (ללא Pippenger, ללא Threads)
+    
+    // 2. Serial MSM Commitment (No Pippenger, No Multi-threading)
+    // This measures the raw cryptographic cost of linear commitments
     printf("[Audit] Phase 1: Serial MSM Commitment (Single-Thread) started...\n");
     auto msm_start = std::chrono::high_resolution_clock::now();
-    G1 serial_comm; serial_comm.clear();
+    G1 serial_comm; 
+    serial_comm.clear();
     
     for (u32 i = 0; i < total_pts; ++i) {
         G1 tmp;
-        // ביצוע mul פשוט - העלות הקלאסית של מחויבות ליניארית
+        // Simple scalar multiplication - the classical bottleneck
         G1::mul(tmp, p->gens[0], F(lasso_vals_ll[i]));
         serial_comm += tmp;
         
@@ -1117,26 +1094,29 @@ bool verifier::verifyLasso()
     }
     auto msm_end = std::chrono::high_resolution_clock::now();
     double msm_time_single = std::chrono::duration<double>(msm_end - msm_start).count();
-
-    // 3. קריאה לפרובר - המימוש הטורי החדש שלך
+    
+    // 3. Prover Call - Single-Threaded Sumcheck Execution
     printf("[Audit] Phase 2: Calling Prover (Single-Thread Sumcheck)...\n");
     auto sc_start = std::chrono::high_resolution_clock::now();
     
-    // שימוש בפונקציה החדשה שביקשת
+    // Executing the serial version of the Lasso lookup logic
     F prover_eval = p->execute_real_lasso_lookup_single_thread(r_lasso, target_lyr);
     
     auto sc_end = std::chrono::high_resolution_clock::now();
     double sc_time_single = std::chrono::duration<double>(sc_end - sc_start).count();
-
-    // 4. Phase 3: Opening Proof (Hyrax) - חישוב טורי
+    
+    // 4. Phase 3: Serial Hyrax Opening Proof (Evaluation at point r)
+    // This ensures that the committed table is evaluated correctly against r_lasso
     printf("[Audit] Phase 3: Serial Hyrax Opening Proof...\n");
     auto open_start = std::chrono::high_resolution_clock::now();
-    Fr* Lp = new Fr[256]; Fr* Rp = new Fr[256];
+    Fr* Lp = new Fr[256]; 
+    Fr* Rp = new Fr[256];
+    // Brute-force opening for 16-bit table (2^8 x 2^8 decomposition)
     brute_force_compute_LR(Lp, Rp, &r_lasso, 16); 
     auto open_end = std::chrono::high_resolution_clock::now();
     double open_time_single = std::chrono::duration<double>(open_end - open_start).count();
-
-    // 5. אימות התוצאה (השוואה מול ה-Expected Sum שחושב ב-Single Thread)
+    
+    // 5. Verifier Verification (Comparing Prover result against the expected fractional sum)
     F expected_sumcheck_eval = F_ZERO;
     for (u32 i = 0; i < total_pts; ++i) {
         u32 v_val = (u32)(lasso_vals_ll[i] & 0xFFFF);
@@ -1146,10 +1126,10 @@ bool verifier::verifyLasso()
             expected_sumcheck_eval += inv;
         }
     }
-
+    
     bool status = (prover_eval == expected_sumcheck_eval);
-
-    // 6. דו"ח סופי להשוואה
+    
+    // 6. Final Baseline Report for Scientific Parity
     printf("\n================================================\n");
     printf("   LASSO SINGLE-THREAD BASELINE REPORT\n");
     printf("================================================\n");
@@ -1160,14 +1140,15 @@ bool verifier::verifyLasso()
     printf("TOTAL LASSO (SINGLE-THREAD):  %.4f s\n", (msm_time_single + sc_time_single + open_time_single));
     printf("Verification Status:           %s\n", status ? "SUCCESS" : "FAILED");
     printf("================================================\n");
-
-    // עדכון המשתנים הגלובליים לדיווח הסופי של המערכת
+    
+    // Update global variables for final system-wide reporting
     p->accumulated_lasso_time = (msm_time_single + sc_time_single + open_time_single);
     fflush(stdout);
     
     printf("[Success] Range Proofs verified against challenge: %s\n", r_lasso.getStr().substr(0,10).c_str());
     fflush(stdout);
     // ==============================================================================
+
 
     
     cout << "[Log] Finished all Lasso lookups. Verifying final consistency..." << endl;

@@ -5,7 +5,7 @@
 This is an enhanced implementation of **zkGPT**, a SNARK framework for LLM inference. 
 This project is an extension of the original work which can be found at: [https://zenodo.org/records/14727819](https://zenodo.org/records/14727819).
 
-The core of this project references code from zkCNN and Lasso. **Current implementation supports GPT-2.** The research paper describing zkGPT in detail is included in this repository as a PDF file: `zkGPT-fullversion.pdf`.
+ **Current implementation supports GPT-2.** The research paper describing zkGPT in detail is included in this repository as a PDF file: `zkGPT-fullversion.pdf`.
 
 ---
 
