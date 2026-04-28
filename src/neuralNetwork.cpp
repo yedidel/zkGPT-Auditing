@@ -1123,6 +1123,22 @@ void neuralNetwork::compute_e_table()
         int t=round(exp(-St*i)/Se);
         table[i]=max(t,1);  //TODO: avoid sum_Ei=0, occasionally happens
     }
+
+    // yedidel-lasso: mirror the static exp table into the field, padded to
+    // the next power of two (655360 → 2^20 = 1048576). The padded entries are
+    // zero, which the c=1 Lasso protocol handles correctly because no honest
+    // (t_idx, E_idx) pair ever points there (t_idx is bounded by 655360 in
+    // softmax_layer_1's `assert(tj < 655360)`).
+    int log_N = 1;
+    while ((1u << log_N) < 655360u) ++log_N;
+    prover::exp_table_log_size = log_N;
+    prover::exp_table_padded.assign(1u << log_N, F_ZERO);
+    for (int i = 0; i < 655360; ++i) {
+        prover::exp_table_padded[i] = F((long long)table[i]);
+    }
+    // Reset the per-inference (t, E) pair list; collected anew during
+    // softmax_layer_1.
+    prover::exp_lookup_pairs.clear();
 }
 
 void neuralNetwork::softmax_layer_1(layer &circuit, i64 &layer_id,float SQ,float SK,float Sv, float Sy)
@@ -1190,7 +1206,12 @@ void neuralNetwork::softmax_layer_1(layer &circuit, i64 &layer_id,float SQ,float
                 //yedidel
                 prover::lasso_range_indices.push_back(dt2_off);
                 //============================
-                
+
+                // yedidel-lasso: record the (t, E) pair so that the c=1
+                // unstructured Lasso (lasso_unstructured::run_exp_lookup) can
+                // verify E = table[t] for every Softmax exponent lookup.
+                prover::exp_lookup_pairs.push_back({(u32)t_off, (u32)E_off});
+
                 ++T;
             }
         }

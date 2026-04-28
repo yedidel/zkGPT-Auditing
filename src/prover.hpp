@@ -69,8 +69,24 @@ public:
     //yedidel
     long long lasso_range_counts = 0;
     static std::vector<u32> lasso_range_indices;
-    F execute_real_lasso_lookup_multi_thread(const F &r_point, u32 val_idx); 
-    F execute_real_lasso_lookup_single_thread(const F &r_point, u32 val_idx); 
+    F execute_real_lasso_lookup_multi_thread(const F &r_point, u32 val_idx);
+    F execute_real_lasso_lookup_single_thread(const F &r_point, u32 val_idx);
+
+    // yedidel-lasso: hooks populated by neuralNetwork.cpp and consumed by
+    //   lasso_unstructured::run_exp_lookup() inside verifier::verifyLasso.
+    //
+    //   exp_lookup_pairs[k]    : (t_idx, E_idx) into val[0] for one (t, E)
+    //                            Softmax-table pair to be checked.
+    //   exp_table_padded       : the static exp table cast into the field and
+    //                            zero-padded to length 2^exp_table_log_size.
+    //   exp_table_log_size     : log2 of the padded length (20 for 655360 → 2^20).
+    //
+    // These are static because the protocol modules read them without
+    // changing the existing prover instance API.
+    struct ExpLookupPair { u32 t_idx; u32 E_idx; };
+    static std::vector<ExpLookupPair> exp_lookup_pairs;
+    static std::vector<F>             exp_table_padded;
+    static int                        exp_table_log_size;
     // double lasso_time = 0;
     // double commit_time = 0;
 

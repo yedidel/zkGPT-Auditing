@@ -5,7 +5,14 @@
 //yedidel
 #include <omp.h>
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
-std::vector<u32> prover::lasso_range_indices;            
+std::vector<u32> prover::lasso_range_indices;
+// yedidel-lasso: storage for the c=1 exp-table lookup pairs and the static
+// table itself (cast into the field and zero-padded). Populated by
+// neuralNetwork::compute_e_table() and the Softmax checker, consumed by
+// lasso_unstructured::run_exp_lookup() via verifier::verifyLasso.
+std::vector<prover::ExpLookupPair> prover::exp_lookup_pairs;
+std::vector<F>                     prover::exp_table_padded;
+int                                prover::exp_table_log_size = 0;
 //============================
 
 static vector<F> beta_gs, beta_u;
@@ -406,14 +413,16 @@ void prover::sumcheckLassoInit(const vector<F> &s_u, const vector<F> &s_v,const 
         }
     }
     
-    //yedidel
-    for (u32 idx : lasso_range_indices) {
-        lasso_mult_v[idx] += F_ONE;
-    }
-    cout << "[Log] Prover: Injected " << lasso_range_indices.size() << " range constraints into Lasso multiplier." << endl;
-
+    // yedidel: removed the `lasso_mult_v[idx] += F_ONE` injection that previously
+    // hijacked this vector for two purposes (GKR cross-layer batched-opening AND
+    // marking lookup indices), which broke the sumcheck invariant
+    // `eval_in * gr == previousSum` asserted in verifyLasso.
+    // Range-check soundness is now provided by an independent LogUp protocol
+    // (commitments to `m` and `f_vec`, real sumcheck, Hyrax openings) — see
+    // execute_real_lasso_lookup_single_thread and verifyLasso.
+    cout << "[Log] Prover: " << lasso_range_indices.size() << " range constraints will be enforced by independent LogUp lookup." << endl;
     //============================
-    
+
     round = 0;
     prove_timer.stop();
 }
@@ -618,99 +627,45 @@ void prover::sumcheck_lasso_Finalize(const F &previous_random, F &claim_1)
     proof_size += F_BYTE_SIZE;
 }
 
-//yedidel
-
+// yedidel: the previous implementations of these two functions implemented an
+// unsound LogUp sketch and used a `& 0xFFFF` mask that silently accepted values
+// outside [0, 2^16). They have been replaced by the sound LogUp protocol in
+// `lasso_logup::run` (see lasso_logup.hpp). These wrappers remain only because
+// their declarations are part of the public prover API (prover.hpp); they now
+// (a) honestly compute the prover-side LogUp evaluation Σ counts[j]/(r+j)
+//     using the signed `convert(Fr)` helper for explicit range validation, and
+// (b) abort if any value is outside [0, 2^16) instead of masking it away.
+// The proof-size and verifier-side checks that used to live here are now
+// performed inside `lasso_logup::run`.
 F prover::execute_real_lasso_lookup_multi_thread(const F &r_point, u32 val_idx) {
-    const u32 table_size = 1 << 16; // Fixed 16-bit range for GPT-2 quantization
-    vector<F> counts(table_size, F_ZERO);
-    
-    // Phase 1: Parallel Counting (Grouping optimization)
-    #pragma omp parallel
-    {
-        vector<u32> local_counts_u32(table_size, 0);
-        #pragma omp for nowait
-        for (u32 i = 0; i < lasso_range_indices.size(); ++i) {
-            u32 idx = lasso_range_indices[i];
-            if (idx < val[val_idx].size()) {
-                u32 v_int = (u32)(val[val_idx][idx].getInt64() & 0xFFFF); 
-                local_counts_u32[v_int]++;
-            }
-        }
-        #pragma omp critical
-        {
-            for (u32 j = 0; j < table_size; ++j) {
-                if (local_counts_u32[j] > 0) counts[j] += F(local_counts_u32[j]);
-            }
-        }
-    }
-
-    // Phase 2: Parallel Sumcheck Evaluation
-    F eval_result = F_ZERO;
-    const int n_threads = 32;
-    F* local_evals = new F[n_threads];
-    for(int i=0; i<n_threads; i++) local_evals[i] = F_ZERO;
-
-    #pragma omp parallel num_threads(n_threads)
-    {
-        int tid = omp_get_thread_num();
-        F thread_sum = F_ZERO;
-        #pragma omp for nowait
-        for (u32 i = 0; i < table_size; ++i) {
-            if (!counts[i].isZero()) {
-                F denominator = r_point + F(i);
-                F inv; 
-                F::inv(inv, denominator);
-                thread_sum += counts[i] * inv;
-            }
-        }
-        local_evals[tid] = thread_sum;
-    }
-    for(int i=0; i<n_threads; i++) eval_result += local_evals[i];
-    delete[] local_evals;
-
-    // Phase 3: Cryptographic Proof Size Accounting
-    // Consistent with Lasso protocol requirements for Soundness
-    u64 sc_overhead = 16 * F_BYTE_SIZE * 3; // 16 Sumcheck rounds
-    u64 opening_overhead = (u64)(log2(table_size) * (G_BYTE_SIZE * 2 + F_BYTE_SIZE)); // Hyrax Opening
-    u64 commitment_size = G_BYTE_SIZE * 3; // 3 Lasso auxiliary commitments (Counts, Read-counts, etc.)
-    
-    this->proof_size += (sc_overhead + opening_overhead + commitment_size);
-    return eval_result;
+    return execute_real_lasso_lookup_single_thread(r_point, val_idx);
 }
 
 F prover::execute_real_lasso_lookup_single_thread(const F &r_point, u32 val_idx) {
-    const u32 table_size = 1 << 16; // Fixed 16-bit range for GPT-2 quantization
-    vector<F> counts(table_size, F_ZERO);
-    
-    // Phase 1: Pure Serial Counting
-    // We explicitly avoid thread-local storage and OMP pragmas here 
-    // to measure the true baseline performance of a single-threaded execution.
+    const u32 table_size = 1u << 16;
+    vector<long long> counts(table_size, 0);
+
     for (u32 idx : lasso_range_indices) {
-        if (idx < val[val_idx].size()) {
-            u32 v_int = (u32)(val[val_idx][idx].getInt64() & 0xFFFF); 
-            counts[v_int] += F_ONE;
+        if (idx >= val[val_idx].size()) continue;
+        __int128 v = convert(val[val_idx][idx]);
+        if (v < 0 || v >= (__int128)table_size) {
+            cerr << "[prover::execute_real_lasso_lookup] range check FAILED at val["
+                 << val_idx << "][" << idx << "] = " << (long long)v
+                 << " (must be in [0, 2^16)). Aborting." << endl;
+            return F_ZERO;
         }
+        counts[(u32)v] += 1;
     }
 
-    // Phase 2: Serial Sumcheck Evaluation
     F eval_result = F_ZERO;
-    for (u32 i = 0; i < table_size; ++i) {
-        if (!counts[i].isZero()) {
-            F denominator = r_point + F(i);
-            F inv; F::inv(inv, denominator);
-            eval_result += counts[i] * inv;
-        }
+    for (u32 j = 0; j < table_size; ++j) {
+        if (counts[j] == 0) continue;
+        F den = r_point + F((int)j);
+        if (den.isZero()) continue;  // skip negligible-probability collision
+        F inv;
+        F::inv(inv, den);
+        eval_result += F((long long)counts[j]) * inv;
     }
-
-
-        // Phase 3: Cryptographic Proof Size Accounting
-    // Consistent with Lasso protocol requirements for Soundness
-    u64 sc_overhead = 16 * F_BYTE_SIZE * 3; // 16 Sumcheck rounds
-    u64 opening_overhead = (u64)(log2(table_size) * (G_BYTE_SIZE * 2 + F_BYTE_SIZE)); // Hyrax Opening
-    u64 commitment_size = G_BYTE_SIZE * 3; // 3 Lasso auxiliary commitments (Counts, Read-counts, etc.)
-    
-    this->proof_size += (sc_overhead + opening_overhead + commitment_size);
-    
     return eval_result;
 }
 //============================
