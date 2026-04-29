@@ -16,6 +16,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 
 #ifdef _OPENMP
@@ -29,6 +31,32 @@ namespace lasso_surge {
 // yedidel-lasso: per-translation-unit OpenMP reduction operator for F so the
 // sumcheck inner loops can use `reduction(+: ...)` over Fr accumulators.
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
+
+// yedidel-lasso (adversarial-test harness):
+//   The environment variable LASSO_ADV_TEST selects one of several
+//   pre-defined "attack" scenarios that tamper with one specific witness
+//   value at a controlled point in the protocol. The harness lets us verify
+//   empirically that each soundness check actually rejects the tampered
+//   input. Recognised values:
+//     NEG          — inject a negative Fr into val[0] just before Phase A
+//                    pre-scan. Expect Phase A pre-scan rejection.
+//     WRONG-E      — flip one E_arr[α][k] after Phase A. Expect Spice
+//                    memory-check (multiset identity) rejection.
+//     WRONG-DIM    — flip one dim_arr[α][k] after Phase A. Expect Spice
+//                    memory-check or discharge rejection.
+//     WRONG-CTS    — flip one read_cts after memcheck builds it. Expect
+//                    discharge mismatch in Phase E.
+//     WRONG-FN     — flip one final_cts after memcheck. Expect discharge
+//                    mismatch in Phase E.
+//   When LASSO_ADV_TEST is unset (or "HONEST"), no tampering occurs and the
+//   protocol runs exactly as a baseline.
+namespace {
+inline std::string adv_test_mode() {
+    const char *e = std::getenv("LASSO_ADV_TEST");
+    return e ? std::string(e) : "";
+}
+inline bool adv_is(const char *name) { return adv_test_mode() == name; }
+}  // namespace
 
 namespace {
 
@@ -205,6 +233,30 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         return out;
     }
 
+    // yedidel-lasso (adv-test): announce the active mode early so the log
+    // makes clear what scenario this run is exercising.
+    {
+        std::string m = adv_test_mode();
+        if (!m.empty()) {
+            std::fprintf(stderr,
+                "[adv-test] LASSO_ADV_TEST=%s — running adversarial scenario\n",
+                m.c_str());
+            std::fflush(stderr);
+        }
+    }
+
+    // yedidel-lasso (adv-test:NEG): tamper with val[0] BEFORE the pre-scan
+    // sees it, by replacing the first range-check entry with a negative Fr.
+    // Expected: Phase A pre-scan reports
+    //   "FATAL: N negative range-check witnesses found ..."
+    if (adv_is("NEG")) {
+        u32 idx = prover::lasso_range_indices[0];
+        p->val[0][idx] = F_ZERO - F_ONE;  // = -1 mod p (Fr.isNegative() == true)
+        std::fprintf(stderr,
+            "[adv-test:NEG] Injected -1 into val[0][%u] (lookup k=0)\n", idx);
+        std::fflush(stderr);
+    }
+
     // -----------------------------------------------------------------------
     // Phase A: collect v, validate range, decompose to NUM_SUB subtables.
     //
@@ -361,6 +413,27 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         phase_A_s);
     std::fflush(stderr);
 
+    // yedidel-lasso (adv-test:WRONG-E): flip one E_α value AFTER Phase A so
+    // commitments are made on the original (correct) value but the prover's
+    // state has a corrupted E. Spice memory checking should reject because
+    // the read multiset will contain a tuple whose value disagrees with T.
+    if (adv_is("WRONG-E") && out.num_lookups > 1) {
+        E_arr[0][1] = E_arr[0][1] + F_ONE;
+        std::fprintf(stderr,
+            "[adv-test:WRONG-E] Tampered E_arr[α=0][k=1] += 1 after Phase A\n");
+        std::fflush(stderr);
+    }
+
+    // yedidel-lasso (adv-test:WRONG-DIM): flip one dim_α value. Spice
+    // memory-check identity (or the per-multiset discharge) should fail.
+    if (adv_is("WRONG-DIM") && out.num_lookups > 1) {
+        dim_arr[0][1] = (dim_arr[0][1] + 1u) & ((1u << SUB_LOG) - 1u);
+        std::fprintf(stderr,
+            "[adv-test:WRONG-DIM] Tampered dim_arr[α=0][k=1] += 1 mod 2^%u\n",
+            SUB_LOG);
+        std::fflush(stderr);
+    }
+
     // -----------------------------------------------------------------------
     // Phase B: Hyrax commitments.
     //   * v  : log2(M)   variables
@@ -501,6 +574,26 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
             delete[] Tk_dim[a]; delete[] Tk_E[a];
         }
         return out;
+    }
+
+    // yedidel-lasso (adv-test:WRONG-CTS): tamper with read_cts AFTER memcheck
+    // built it but BEFORE we commit. The Hyrax commit captures the tampered
+    // value, but the GKR final-claim was computed from the honest state, so
+    // discharge in Phase E will report a final-claim mismatch.
+    if (adv_is("WRONG-CTS") && M > 1) {
+        mc_w_arr[0].read_cts[1] = mc_w_arr[0].read_cts[1] + F_ONE;
+        std::fprintf(stderr,
+            "[adv-test:WRONG-CTS] Tampered read_cts[α=0][k=1] += 1 between memcheck and commit\n");
+        std::fflush(stderr);
+    }
+
+    // yedidel-lasso (adv-test:WRONG-FN): symmetric to WRONG-CTS but on
+    // final_cts. Discharge of the gp_final multiset must fail.
+    if (adv_is("WRONG-FN") && SUB_N > 1) {
+        mc_w_arr[0].final_cts[1] = mc_w_arr[0].final_cts[1] + F_ONE;
+        std::fprintf(stderr,
+            "[adv-test:WRONG-FN] Tampered final_cts[α=0][j=1] += 1 between memcheck and commit\n");
+        std::fflush(stderr);
     }
 
     // Commit to read_cts_α (length M) and final_cts_α (length N_α) for each α.

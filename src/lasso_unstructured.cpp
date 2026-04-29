@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 
 #ifdef _OPENMP
@@ -18,6 +20,22 @@ namespace lasso_unstructured {
 
 // yedidel-lasso: per-translation-unit OpenMP reduction operator for F.
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
+
+// yedidel-lasso (adv-test): mirror of the harness in lasso_surge.cpp.
+// Recognised LASSO_ADV_TEST values that this module handles:
+//     WRONG-T-EXP — tamper with one entry of the exp-table polynomial
+//                   AFTER the Hyrax commit was taken on its honest value.
+//                   The init / final multiset hashes captured the original
+//                   T value, but the discharge re-opens T at a random
+//                   point against the tampered local copy, so the leaf
+//                   reconstruction must mismatch.
+namespace {
+inline std::string adv_test_mode() {
+    const char *e = std::getenv("LASSO_ADV_TEST");
+    return e ? std::string(e) : "";
+}
+inline bool adv_is(const char *name) { return adv_test_mode() == name; }
+}  // namespace
 
 namespace {
 
@@ -258,6 +276,23 @@ lasso_core::LassoBenchmark run_exp_lookup(prover *p,
     G1 *Tk_E = commit_fr_hyrax(E_local.data(), gens_M.g.data(), log_M);
 
     std::vector<F> T_local(T_padded);
+
+    // yedidel-lasso (adv-test:WRONG-T-EXP): tamper with one entry of T_local
+    // BEFORE the Hyrax commit. Spice memory checking still sees the
+    // honest T_padded (its const& parameter), so the init / final
+    // multisets capture the ORIGINAL T values; the commit on T_local
+    // captures the tampered values. In Phase E discharge, the open of
+    // Tk_T returns the tampered MLE, but mc.gp_init.final_claim comes
+    // from the honest-T multiset, so the leaf reconstruction must
+    // mismatch -- graceful rejection without firing a Hyrax binding
+    // assertion.
+    if (adv_is("WRONG-T-EXP") && N > 1) {
+        T_local[1] = T_local[1] + F_ONE;
+        std::fprintf(stderr,
+            "[adv-test:WRONG-T-EXP] Tampered T_local[1] += 1 before Hyrax commit\n");
+        std::fflush(stderr);
+    }
+
     G1 *Tk_T = commit_fr_hyrax(T_local.data(), gens_N.g.data(), log_N);
 
     auto t_b1 = std::chrono::high_resolution_clock::now();
