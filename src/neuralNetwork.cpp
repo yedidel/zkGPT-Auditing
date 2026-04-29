@@ -289,7 +289,6 @@ void neuralNetwork::create(prover &pr, bool merge)
     cout << "[DEBUG_LOG] neuralNetwork::create started. Prover address: " << &pr << endl;
     compute_e_table();
     
-    //yedidel
     prover::lasso_range_indices.clear();        
     //============================
     
@@ -313,7 +312,7 @@ void neuralNetwork::create(prover &pr, bool merge)
     G1 base=gen_gi(pr.gens.data(),n_sqrt);
     pr.gens.push_back(base);
     
-    //yedidel - move -commitInput() after all auxiliaries added to val[0]
+    //(fork) - move -commitInput() after all auxiliaries added to val[0]
     // T.start();
     // pr.commitInput(pr.gens,32);  //commit weight
     // T.stop();
@@ -391,17 +390,16 @@ void neuralNetwork::create(prover &pr, bool merge)
     }
     pr.mat_val=mat_values;
 
-    //yedidel
     cout << "[Log] Total Lasso Range Indices collected: " << prover::lasso_range_indices.size() << endl;
 
     T.start();
     pr.commitInput(pr.gens,32);  //commit weight
     T.stop();
     pr.proof_size+= 1<<(pr.cc.l/2);
-    pr.initial_commitment_time = T.elapse_sec(); // שמירה באובייקט pr
+    pr.initial_commitment_time = T.elapse_sec(); // store on the prover object
     cout << "[Step 1/4] Model Weights Commitment Finished: " << pr.initial_commitment_time << "s" << endl;
     cout<<"Start initiating circuit"<<endl;
-    // זה הלוג המקורי שאנחנו רואים בפלט
+    // original log line surfaced in the captured stdout
     cout << "[DEBUG_LOG] Full input commit time (weights+aux): " << T.elapse_sec() << "s" << endl;
     
     
@@ -577,7 +575,6 @@ void neuralNetwork::ln_checker_layer1(layer &circuit, i64 &layer_id, int ln_id, 
             val[0][d2_off]=Fr(term1)*Fr(term2);
             positive_check+=1;  //add one d2
 
-            //yedidel
             prover::lasso_range_indices.push_back(d2_off);
             //============================
         }
@@ -591,7 +588,6 @@ void neuralNetwork::ln_checker_layer1(layer &circuit, i64 &layer_id, int ln_id, 
         val[0][d1_off]=delta1;
         positive_check+=1;  //add one d1
 
-        //yedidel
          prover::lasso_range_indices.push_back(d1_off);
         //============================
     }
@@ -843,7 +839,6 @@ void neuralNetwork::gelu_checker_layer1(layer &circuit, i64 &layer_id, int real_
         assert(term2>0);
         val[0][d3_off+gp]= Fr(term1)*Fr(term2);
 
-        //yedidel
         prover::lasso_range_indices.push_back(d1_off+gp);
         prover::lasso_range_indices.push_back(d2_off+gp);
         prover::lasso_range_indices.push_back(d3_off+gp);
@@ -1048,7 +1043,6 @@ void neuralNetwork::roundLayer(layer &circuit, i64 &layer_id, float scale,bool* 
        val[0][s]=Fr(p*c*(1ll<<(m+M+1))+(1<<M)-q*(1<<(M+1)))*Fr(q*(1<<(M+1))+(1<<M)-c*(1ll<<(m+M+1))*p);
        assert(!val[0][s].isNegative());
 
-        //yedidel
          prover::lasso_range_indices.push_back(s);   
         //============================
 
@@ -1124,7 +1118,7 @@ void neuralNetwork::compute_e_table()
         table[i]=max(t,1);  //TODO: avoid sum_Ei=0, occasionally happens
     }
 
-    // yedidel-lasso: mirror the static exp table into the field, padded to
+    // lasso-fork: mirror the static exp table into the field, padded to
     // the next power of two (655360 → 2^20 = 1048576). The padded entries are
     // zero, which the c=1 Lasso protocol handles correctly because no honest
     // (t_idx, E_idx) pair ever points there (t_idx is bounded by 655360 in
@@ -1203,11 +1197,10 @@ void neuralNetwork::softmax_layer_1(layer &circuit, i64 &layer_id,float SQ,float
                 val[0][dt2_off]=Fr(c1*(1<<(e1+eprime+1))*pj_+(1<<eprime)-tj*(1<<(eprime+1)))*Fr(-c1*(1<<(e1+eprime+1))*pj_+(1<<eprime)+tj*(1<<(eprime+1)));
                 val[0][sum_E_offset]+=table[tj];
                 
-                //yedidel
                 prover::lasso_range_indices.push_back(dt2_off);
                 //============================
 
-                // yedidel-lasso: record the (t, E) pair so that the c=1
+                // lasso-fork: record the (t, E) pair so that the c=1
                 // unstructured Lasso (lasso_unstructured::run_exp_lookup) can
                 // verify E = table[t] for every Softmax exponent lookup.
                 prover::exp_lookup_pairs.push_back({(u32)t_off, (u32)E_off});

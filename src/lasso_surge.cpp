@@ -1,4 +1,4 @@
-// yedidel-lasso: Surge protocol for the 32-bit range-check table.
+// lasso-fork: Surge protocol for the 32-bit range-check table.
 // See lasso_surge.hpp for the protocol summary.
 //
 // NOTE (range expansion): the GPT-2 Softmax dt2 witness is a product of two
@@ -28,11 +28,11 @@
 
 namespace lasso_surge {
 
-// yedidel-lasso: per-translation-unit OpenMP reduction operator for F so the
+// lasso-fork: per-translation-unit OpenMP reduction operator for F so the
 // sumcheck inner loops can use `reduction(+: ...)` over Fr accumulators.
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
 
-// yedidel-lasso (adversarial-test harness):
+// lasso-fork (adversarial-test harness):
 //   The environment variable LASSO_ADV_TEST selects one of several
 //   pre-defined "attack" scenarios that tamper with one specific witness
 //   value at a controlled point in the protocol. The harness lets us verify
@@ -60,7 +60,7 @@ inline bool adv_is(const char *name) { return adv_test_mode() == name; }
 
 namespace {
 
-// yedidel-lasso: 16-bit subtables give us a tighter NUM_SUB (e.g. 4 instead
+// lasso-fork: 16-bit subtables give us a tighter NUM_SUB (e.g. 4 instead
 // of 7 for a 56-bit witness max), and each Spice memory check now operates on
 // a 2^16 init/final multiset (still small enough for fast grand-product).
 // The cost per subtable is roughly the same — we trade slightly bigger
@@ -132,7 +132,7 @@ void sumcheck_product(F *f, F *g, int l, F target,
         // it's the product of two linear functions. We send three values:
         //   p(0), p(1), p(2)  (sufficient to reconstruct a degree-2 poly).
         //
-        // yedidel-lasso: each k-iteration is independent; OpenMP reduction
+        // lasso-fork: each k-iteration is independent; OpenMP reduction
         // over the three Fr accumulators gives near-linear speedup on the
         // first few rounds (which dominate the cost).
         F p0 = F_ZERO, p1 = F_ZERO, p2 = F_ZERO;
@@ -172,7 +172,7 @@ void sumcheck_product(F *f, F *g, int l, F target,
         *verifier_time_s += std::chrono::duration<double>(t_v1 - t_v0).count();
 
         // Fold both vectors.
-        // yedidel-lasso (race fix): same in-place-fold race that bit
+        // lasso-fork (race fix): same in-place-fold race that bit
         // grand_product. Use temporary buffers and copy back.
         auto t_f0 = std::chrono::high_resolution_clock::now();
         std::vector<F> nxt_wf(half), nxt_wg(half);
@@ -217,7 +217,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
     out.sound = true;
     out.num_lookups = (u32)prover::lasso_range_indices.size();
 
-    // yedidel-lasso: verbose entry banner so we can confirm this exact module
+    // lasso-fork: verbose entry banner so we can confirm this exact module
     // ran (vs. a stale binary's older verifier.cpp). All diagnostic output
     // goes to stderr with explicit fflush so it cannot be lost to buffering.
     std::fprintf(stderr,
@@ -233,7 +233,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         return out;
     }
 
-    // yedidel-lasso (adv-test): announce the active mode early so the log
+    // lasso-fork (adv-test): announce the active mode early so the log
     // makes clear what scenario this run is exercising.
     {
         std::string m = adv_test_mode();
@@ -245,7 +245,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         }
     }
 
-    // yedidel-lasso (adv-test:NEG): tamper with val[0] BEFORE the pre-scan
+    // lasso-fork (adv-test:NEG): tamper with val[0] BEFORE the pre-scan
     // sees it, by replacing the first range-check entry with a negative Fr.
     // Expected: Phase A pre-scan reports
     //   "FATAL: N negative range-check witnesses found ..."
@@ -413,7 +413,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         phase_A_s);
     std::fflush(stderr);
 
-    // yedidel-lasso (adv-test:WRONG-E): flip one E_α value AFTER Phase A so
+    // lasso-fork (adv-test:WRONG-E): flip one E_α value AFTER Phase A so
     // commitments are made on the original (correct) value but the prover's
     // state has a corrupted E. Spice memory checking should reject because
     // the read multiset will contain a tuple whose value disagrees with T.
@@ -424,7 +424,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         std::fflush(stderr);
     }
 
-    // yedidel-lasso (adv-test:WRONG-DIM): flip one dim_α value. Spice
+    // lasso-fork (adv-test:WRONG-DIM): flip one dim_α value. Spice
     // memory-check identity (or the per-multiset discharge) should fail.
     if (adv_is("WRONG-DIM") && out.num_lookups > 1) {
         dim_arr[0][1] = (dim_arr[0][1] + 1u) & ((1u << SUB_LOG) - 1u);
@@ -473,7 +473,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         return prover_commit(ll_vec.data(), gens_M.g.data(), log_M, 1);
     };
 
-    // yedidel-lasso: commit to v itself in addition to dim_α and E_α.
+    // lasso-fork: commit to v itself in addition to dim_α and E_α.
     //   Without C_v, the Surge main sumcheck would just trust v(z_z) as a
     //   claim from the prover, and a malicious prover could pick any v
     //   together with consistent dim_α (since the limbs always reconstruct
@@ -576,7 +576,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         return out;
     }
 
-    // yedidel-lasso (adv-test:WRONG-CTS): tamper with read_cts AFTER memcheck
+    // lasso-fork (adv-test:WRONG-CTS): tamper with read_cts AFTER memcheck
     // built it but BEFORE we commit. The Hyrax commit captures the tampered
     // value, but the GKR final-claim was computed from the honest state, so
     // discharge in Phase E will report a final-claim mismatch.
@@ -587,7 +587,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         std::fflush(stderr);
     }
 
-    // yedidel-lasso (adv-test:WRONG-FN): symmetric to WRONG-CTS but on
+    // lasso-fork (adv-test:WRONG-FN): symmetric to WRONG-CTS but on
     // final_cts. Discharge of the gp_final multiset must fail.
     if (adv_is("WRONG-FN") && SUB_N > 1) {
         mc_w_arr[0].final_cts[1] = mc_w_arr[0].final_cts[1] + F_ONE;
@@ -632,7 +632,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         v_at_zz.getStr(10).substr(0, 16).c_str());
     std::fflush(stderr);
 
-    // yedidel-lasso: bind v(z_z) to the C_v commit. Without this opening, the
+    // lasso-fork: bind v(z_z) to the C_v commit. Without this opening, the
     // prover could send any value as v(z_z) and the Surge identity check would
     // be meaningless. Opening at z_z (the same point used by all per-subtable
     // sumchecks) keeps the Lasso instance self-consistent.
@@ -725,7 +725,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         }
     }
 
-    // yedidel-lasso: verifier-side recomputation of eq(z_z, r_α). The
+    // lasso-fork: verifier-side recomputation of eq(z_z, r_α). The
     // sumcheck "trusts" the final fold of eq_z, but a malicious prover could
     // send a tuple (eq_at_w, E_at_w) whose product happens to equal the
     // reduced sum without either being correct individually. Recomputing eq
@@ -888,7 +888,7 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
     }
 
     p->proof_size            += out.proof_size_bytes;
-    // yedidel-lasso: use += so this composes with the c=1 unstructured run
+    // lasso-fork: use += so this composes with the c=1 unstructured run
     // that follows in verifier::verifyLasso. Both write into the same
     // `accumulated_lasso_time` field and the framework's existing audit
     // report sums them as a single "Lasso Range Proof" line.

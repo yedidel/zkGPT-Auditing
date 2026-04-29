@@ -2,11 +2,10 @@
 #include <iostream>
 #include <utils.hpp>
 
-//yedidel
 #include <omp.h>
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
 std::vector<u32> prover::lasso_range_indices;
-// yedidel-lasso: storage for the c=1 exp-table lookup pairs and the static
+// lasso-fork: storage for the c=1 exp-table lookup pairs and the static
 // table itself (cast into the field and zero-padded). Populated by
 // neuralNetwork::compute_e_table() and the Softmax checker, consumed by
 // lasso_unstructured::run_exp_lookup() via verifier::verifyLasso.
@@ -413,7 +412,7 @@ void prover::sumcheckLassoInit(const vector<F> &s_u, const vector<F> &s_v,const 
         }
     }
     
-    // yedidel: removed the `lasso_mult_v[idx] += F_ONE` injection that previously
+    // (fork): removed the `lasso_mult_v[idx] += F_ONE` injection that previously
     // hijacked this vector for two purposes (GKR cross-layer batched-opening AND
     // marking lookup indices), which broke the sumcheck invariant
     // `eval_in * gr == previousSum` asserted in verifyLasso.
@@ -627,7 +626,7 @@ void prover::sumcheck_lasso_Finalize(const F &previous_random, F &claim_1)
     proof_size += F_BYTE_SIZE;
 }
 
-// yedidel: the previous implementations of these two functions implemented an
+// (fork): the previous implementations of these two functions implemented an
 // unsound LogUp sketch and used a `& 0xFFFF` mask that silently accepted values
 // outside [0, 2^16). They have been replaced by the sound LogUp protocol in
 // `lasso_logup::run` (see lasso_logup.hpp). These wrappers remain only because

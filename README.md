@@ -1,49 +1,99 @@
-# zkGPT
+# zkGPT (anonymous artifact -- faithful Lasso variants)
 
-## Introduction
+This repository is an anonymous research artifact accompanying our
+NeurIPS 2026 Datasets & Benchmarks Track submission. It is a fork of
+the publicly available zkGPT framework of Qu et al. (USENIX Security
+2025; cited in the accompanying paper) that replaces the framework's
+masked range-check wiring with a faithful Lasso lookup pipeline. The
+original unmodified codebase is *not* included here; only our delta
+plus the unmodified files that our delta depends on.
 
-This is an enhanced implementation of **zkGPT**, a SNARK framework for LLM inference. 
-This project is an extension of the original work which can be found at: [https://zenodo.org/records/14727819](https://zenodo.org/records/14727819).
+The full set of changes relative to upstream is documented in
+[`CHANGELOG.md`](CHANGELOG.md). The motivation, evaluation, and
+adversarial validation are reported in the accompanying paper.
 
- **Current implementation supports GPT-2.** The research paper describing zkGPT in detail is included in this repository as a PDF file: `zkGPT-fullversion.pdf`.
-
----
-
-## Recent Cryptographic Audit & Fixes (This Extension)
-
-While the original implementation provided a foundation for proving LLM layers, our audit revealed critical missing components required for a complete and sound zero-knowledge proof. This version adds the following enhancements:
-
-### 1. Full Soundness Implementation
-The original code lacked the **Evaluation Opening Proof** for the Lasso lookup protocol. Without this, the prover's claims about range constraints could not be cryptographically verified against the committed data. 
-* **Added:** We integrated a full **Hyrax-based polynomial opening** at the challenge point $r$ (as described in Protocol 1 of the zkGPT paper).
-* **Added:** Missing auxiliary commitments to Lasso polynomials (counts and lookups) are now computed and verified.
-
-### 2. Corrected Proof Metrics
-Previously, the reported proof size only accounted for Sumcheck field elements, leading to an artificially low figure (~1.8 KB). 
-* **Update:** We updated the metrics to include the actual cryptographic overhead (Commitments + Opening Proofs). The corrected proof size is now **~95.26 KB**, which aligns with the academic benchmarks for GPT-2.
-
-### 3. Performance Analysis (Baseline vs. Optimized)
-We introduced a detailed performance breakdown to distinguish between the theoretical "True Cost" of the protocol and our engineering optimizations:
-* **Baseline Audit:** We measured the Lasso commitment at **~72.8s** in a single-threaded baseline, proving it to be the primary bottleneck in a naive implementation.
-* **Optimized Proof:** By utilizing our 32-thread Pippenger and Circuit Squeeze optimizations, this overhead is reduced to **~0.73s**, making the non-linear layer verification practical.
+The current artifact targets GPT-2 (12 transformer blocks, 12 attention
+heads, hidden dimension 768, sequence length 64).
 
 ---
 
-## Requirement
-### Software Requirement
-- C++14
-- cmake >= 3.10
-- GMP library
+## Summary of changes
 
-### Recommended Server Configuration
-To ensure smooth execution, we recommend using a server with the following specifications:
-- Operating System (OS): Linux (e.g., Ubuntu 18.04 or later)
-- Processor (CPU): Multi-core CPU, preferably with 16 cores or more
-- Memory (RAM): at least 200GB
+See [`CHANGELOG.md`](CHANGELOG.md) for the authoritative list. In
+short:
 
+- Replaces the masked wiring check (`& 0xFFFF`) with two Lasso
+  variants: **Surge** (decomposable, used for LayerNorm/GeLU) and
+  **Unstructured** (`c=1`, used for the Softmax exponentiation table).
+- Adds Spice offline memory checking and a Thaler13 sumcheck-based
+  grand-product GKR.
+- Adds an adversarial test harness (`LASSO_ADV_TEST=...`) covering six
+  tampering scenarios. See Section 5 of `CHANGELOG.md` and Appendix B
+  of the paper.
+- Updates `src/CMakeLists.txt` to enumerate sources explicitly so the
+  new modules participate in every build.
 
-## Experiment Script
-### Clone the repo
-To run the code, make sure you clone with
-``` bash
-git clone --recurse-submodules git@github.com:security-Anonymous/zkTransformer.git
+---
+
+## Requirements
+
+### Software
+- C++14 (tested with GCC 11.4)
+- CMake >= 3.10 (tested with CMake 3.22.1)
+- GMP
+- OpenMP
+- The `mcl-bn254` submodule under `3rd/` (commit `e4c8bbe4`,
+  2025-10-16, as used in the paper measurements)
+
+### Hardware (for full GPT-2 reproduction)
+- Linux (Ubuntu 22.04 used for the paper measurements)
+- A multi-core CPU; the paper measurements used 30 vCPUs of an
+  AMD EPYC 7J13.
+- At least ~200 GB RAM for the largest configurations.
+- An NVIDIA GPU is required only for the (separate) zkLLM artifacts;
+  zkGPT itself runs on the CPU side of the BN254 backend.
+
+The exact configuration used to produce the numbers in the paper is
+documented in Section 3.1 ("Experimental setup").
+
+---
+
+## Build
+
+```bash
+mkdir -p build && cd build
+cmake ..
+make -j
+```
+
+The corrected binary prints `[BUILD-MARKER ...]` lines at startup so
+you can confirm at runtime that the corrected code path -- not a
+stale upstream build that may exist on the same machine -- is the one
+producing the measurements.
+
+---
+
+## Reproducing the headline numbers
+
+The measurements reported in Table 2 of the paper (GPT-2, 12 blocks)
+are produced by the default run of the main binary built above. To
+inspect the per-component breakdown shown in Appendix A
+("Per-component cost") run with verbose logging enabled.
+
+To reproduce a tampering scenario from Appendix B (Table 3), set the
+`LASSO_ADV_TEST` environment variable before launching the binary:
+
+```bash
+LASSO_ADV_TEST=NEG     ./build/main_zkgpt   # rejected at pre-scan
+LASSO_ADV_TEST=WRONG-E ./build/main_zkgpt   # rejected at multiset-hash check
+```
+
+The full list of supported scenarios and the guard that catches each
+one is given in Section 5 of `CHANGELOG.md`.
+
+---
+
+## License
+
+Released under the same terms as the upstream zkGPT codebase. See
+[`LICENSE.md`](LICENSE.md).

@@ -1,4 +1,4 @@
-// yedidel-lasso: Surge protocol for "structured + decomposable" tables.
+// lasso-fork: Surge protocol for "structured + decomposable" tables.
 //
 // Specialised for the 16-bit identity table T[j] = j over j ∈ [0, 2^16) used
 // for the GPT-2 quantization range checks (d1, d2, d3, s, dt2). The table

@@ -12,7 +12,7 @@
 //   eprint 2023/1216) as the paper claims; it only performed a GKR-style
 //   batched opening of the input MLE under a misleading `verifyLasso` name,
 //   and provided no actual lookup argument or range-check soundness.
-//   Earlier yedidel additions sketched the LogUp math but were not sound:
+//   Earlier (fork) additions sketched the LogUp math but were not sound:
 //     - no commitment to the multiplicities polynomial,
 //     - the "verifier" recomputed both sides locally instead of receiving
 //       openings,

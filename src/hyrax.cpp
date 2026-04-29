@@ -101,12 +101,11 @@ G1 perdersen_commit_new(G1* g, ll* f, int n, G1* W_buckets)
     G1 ret;
     ret.clear();
     
-    // הקצאת used באופן מקומי (זה מהיר מספיק ומונע דריסת זיכרון)
-    // או קבלת workplace חיצוני אם תרצה, אבל בוא נתחיל בבטוח:
+    // local "used" allocation: fast enough and avoids cross-call memory aliasing
     bool *used = new bool[COMM_OPT_MAX * block_num];
     memset(used, 0, sizeof(bool) * COMM_OPT_MAX * block_num);
-    
-    // ניקוי ה-Buckets לפני עבודה (קריטי!)
+
+    // clear the buckets before starting (critical: stale state breaks the commit)
     for(int j = 0; j < COMM_OPT_MAX * block_num; j++) W_buckets[j].clear();
 
     ll bar[10];
@@ -142,7 +141,7 @@ G1 perdersen_commit_new(G1* g, ll* f, int n, G1* W_buckets)
             for(int k = 0; k < logmax; k++) {
                 if(jj & (1 << k)) gg[k + logmax * blk] += W_buckets[j];
             }
-            // אין צורך לנקות את W[j] כאן כי ניקינו בהתחלה
+            // no need to clear W[j] here -- we cleared it at the top of the function
         }
     }
 

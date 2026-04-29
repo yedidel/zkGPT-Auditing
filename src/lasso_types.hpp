@@ -1,4 +1,4 @@
-// yedidel-lasso: Shared types and helpers for the Lasso lookup family
+// lasso-fork: Shared types and helpers for the Lasso lookup family
 // (eprint 2023/1216 by Setty-Thaler-Wahby).
 //
 // The zkGPT codebase uses two lookup tables:

@@ -42,7 +42,6 @@ struct Pack
         y=yy;
     }
 };
-//yedidel
 G1 perdersen_commit_new(G1* g,ll* f,int n,G1* W);
 //===========
 G1 perdersen_commit(G1* g,ll* f,int n,G1* W=NULL); //support 2^80, optimized using pippenger

@@ -1,4 +1,4 @@
-// yedidel-lasso: c=1 (unstructured) Lasso — implementation.
+// lasso-fork: c=1 (unstructured) Lasso — implementation.
 // See lasso_unstructured.hpp for the protocol summary.
 
 #include "lasso_unstructured.hpp"
@@ -18,10 +18,10 @@
 
 namespace lasso_unstructured {
 
-// yedidel-lasso: per-translation-unit OpenMP reduction operator for F.
+// lasso-fork: per-translation-unit OpenMP reduction operator for F.
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
 
-// yedidel-lasso (adv-test): mirror of the harness in lasso_surge.cpp.
+// lasso-fork (adv-test): mirror of the harness in lasso_surge.cpp.
 // Recognised LASSO_ADV_TEST values that this module handles:
 //     WRONG-T-EXP — tamper with one entry of the exp-table polynomial
 //                   AFTER the Hyrax commit was taken on its honest value.
@@ -87,7 +87,7 @@ void sumcheck_product(F *f, F *g, int l, F target,
     for (int round = 0; round < l; ++round) {
         auto t_p0 = std::chrono::high_resolution_clock::now();
         int half = len >> 1;
-        // yedidel-lasso: parallelised — see lasso_surge.cpp for the same
+        // lasso-fork: parallelised — see lasso_surge.cpp for the same
         // pattern.
         F p0 = F_ZERO, p1 = F_ZERO, p2 = F_ZERO;
         #pragma omp parallel for reduction(+:p0,p1,p2) schedule(static)
@@ -121,7 +121,7 @@ void sumcheck_product(F *f, F *g, int l, F target,
         auto t_v1 = std::chrono::high_resolution_clock::now();
         *verifier_time_s += std::chrono::duration<double>(t_v1 - t_v0).count();
 
-        // yedidel-lasso (race fix): same in-place-fold race that bit
+        // lasso-fork (race fix): same in-place-fold race that bit
         // grand_product. Use temporary buffers and copy back.
         auto t_f0 = std::chrono::high_resolution_clock::now();
         std::vector<F> nxt_wf(half), nxt_wg(half);
@@ -209,7 +209,7 @@ lasso_core::LassoBenchmark run_exp_lookup(prover *p,
     // -----------------------------------------------------------------------
     auto t_a0 = std::chrono::high_resolution_clock::now();
 
-    // yedidel-lasso: padding entries (k >= num_lookups) must look like
+    // lasso-fork: padding entries (k >= num_lookups) must look like
     // *consistent* reads of address 0 — that is (dim=0, E=T[0]) — so the
     // Spice memory-checking multiset identity stays balanced. The previous
     // version padded with (0, F_ZERO), which only worked when T[0] == 0
@@ -267,7 +267,7 @@ lasso_core::LassoBenchmark run_exp_lookup(prover *p,
     HyraxGenerators gens_M; gens_M.init(log_M);
     HyraxGenerators gens_N; gens_N.init(log_N);
 
-    // yedidel-lasso: `ll` here is __int128 per typedef.hpp, not long long.
+    // lasso-fork: `ll` here is __int128 per typedef.hpp, not long long.
     std::vector<ll> dim_ll(M, (ll)0);
     for (u32 k = 0; k < M; ++k) dim_ll[k] = (ll)dim[k];
     G1 *Tk_dim = prover_commit(dim_ll.data(), gens_M.g.data(), log_M, 1);
@@ -277,7 +277,7 @@ lasso_core::LassoBenchmark run_exp_lookup(prover *p,
 
     std::vector<F> T_local(T_padded);
 
-    // yedidel-lasso (adv-test:WRONG-T-EXP): tamper with one entry of T_local
+    // lasso-fork (adv-test:WRONG-T-EXP): tamper with one entry of T_local
     // BEFORE the Hyrax commit. Spice memory checking still sees the
     // honest T_padded (its const& parameter), so the init / final
     // multisets capture the ORIGINAL T values; the commit on T_local
@@ -410,7 +410,7 @@ lasso_core::LassoBenchmark run_exp_lookup(prover *p,
         out.sound = false;
     }
 
-    // yedidel-lasso: verifier-side recomputation of eq(z_z, r_E). Same
+    // lasso-fork: verifier-side recomputation of eq(z_z, r_E). Same
     // soundness gap closure as in lasso_surge: a malicious prover could send
     // (eq_final, E_final) whose product matches the reduced sum without
     // either being correct individually. O(log M) field ops to recompute.

@@ -1,4 +1,4 @@
-// yedidel-lasso: Grand-Product GKR.
+// lasso-fork: Grand-Product GKR.
 //
 // For a vector v of length 2^L (committed via Hyrax as a multilinear
 // polynomial), this module proves the product P = ∏_i v[i] without exposing

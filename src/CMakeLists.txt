@@ -1,6 +1,6 @@
 aux_source_directory(. gpt_src)
 list(FILTER gpt_src EXCLUDE REGEX "main*")
-# yedidel-lasso: explicitly enumerate all newly added source files so that
+# lasso-fork: explicitly enumerate all newly added source files so that
 # re-running `make` alone (without re-running `cmake`) still picks them up
 # after the directory listing changes. aux_source_directory only refreshes
 # at CMake-configure time, which is a frequent source of "undefined

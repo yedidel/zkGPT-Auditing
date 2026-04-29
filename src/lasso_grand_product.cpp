@@ -1,7 +1,7 @@
-// yedidel-lasso: Grand-Product GKR — implementation (corrected).
+// lasso-fork: Grand-Product GKR — implementation (corrected).
 // See lasso_grand_product.hpp for the protocol summary and rationale.
 //
-// IMPORTANT (yedidel-lasso, post-mortem):
+// IMPORTANT (lasso-fork, post-mortem):
 //   The first version of this file performed a naive layer-by-layer reduction
 //   that only verified  a · b == c  pointwise on {0,1}, which is sound for
 //   the boolean-cube corners but FALSE at random field points used during the
@@ -30,7 +30,7 @@
 
 namespace lasso_core {
 
-// yedidel-lasso: per-translation-unit OpenMP reduction operator for F (mcl::Fr).
+// lasso-fork: per-translation-unit OpenMP reduction operator for F (mcl::Fr).
 // Lets us write `#pragma omp parallel for reduction(+:acc)` over field-element
 // accumulators in the sumcheck inner loops below.
 #pragma omp declare reduction(+: F: omp_out += omp_in) initializer(omp_priv = F_ZERO)
@@ -42,7 +42,7 @@ namespace {
 //   layers[k]   = pairwise products,    size 2^k
 //   layers[0]   = root (single value),  size 1
 //
-// yedidel-lasso: each level's pairwise products are independent so OpenMP
+// lasso-fork: each level's pairwise products are independent so OpenMP
 // gives near-linear speedup for the lower levels (which dominate the cost).
 std::vector<std::vector<F>> build_product_tree(const std::vector<F> &v) {
     int L = 0;
@@ -188,7 +188,7 @@ GrandProductProof prove_grand_product(const std::vector<F> &v) {
             // For each pair (eq[2j], eq[2j+1]) view it as a linear function
             // of X; same for even and odd. Their product is degree 3 in X.
             //
-            // yedidel-lasso: parallelised with OpenMP. Each iteration is
+            // lasso-fork: parallelised with OpenMP. Each iteration is
             // independent, accumulating into four reductions g0..g3. The
             // declared `+: F` reduction at the top of this file makes mcl::Fr
             // safe for `reduction(+:...)`.
@@ -233,7 +233,7 @@ GrandProductProof prove_grand_product(const std::vector<F> &v) {
 
             // Prover folds eq, even, odd by t (LSB collapse).
             //
-            // yedidel-lasso (race fix): we MUST NOT do the fold in place when
+            // lasso-fork (race fix): we MUST NOT do the fold in place when
             // running under OpenMP. The sequential version was safe because
             // thread-of-iter-j2 writes to index j2 only after iter-j1 < j2
             // has already read 2*j1 and 2*j1+1 — but in parallel, thread j2

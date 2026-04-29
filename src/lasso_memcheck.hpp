@@ -1,4 +1,4 @@
-// yedidel-lasso: Spice-style offline memory checking.
+// lasso-fork: Spice-style offline memory checking.
 //
 // Given:
 //   * A static "memory" T_α of size N_α (either an MLE-evaluable subtable for

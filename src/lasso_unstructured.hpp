@@ -1,4 +1,4 @@
-// yedidel-lasso: c=1 (unstructured) Lasso for the Softmax exponentiation table.
+// lasso-fork: c=1 (unstructured) Lasso for the Softmax exponentiation table.
 //
 // Per Bing-Jyue's guidance: tables that are not "structured" — i.e. tables
 // whose MLE has no closed-form O(log N) evaluation — must be handled with

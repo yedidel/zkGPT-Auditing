@@ -3,7 +3,7 @@
 //
 #include "verifier.hpp"
 #include "global_var.hpp"
-// yedidel-lasso: bring in the new Lasso modules. lasso_logup is kept as the
+// lasso-fork: bring in the new Lasso modules. lasso_logup is kept as the
 // fallback / older path; lasso_surge is the real Surge-on-decomposable
 // implementation for the 16-bit range checks; lasso_unstructured is the c=1
 // variant for the exp-table lookup (driven from neuralNetwork via the
@@ -14,7 +14,6 @@
 #include <utils.hpp>
 #include <circuit.h>
 #include <iostream>
-//yedidel
 #include <omp.h> // OpenMP header for parallelism
 
 #include <fstream>
@@ -229,7 +228,6 @@ void verifier::prove(int commit_thread)
     // openCommit();
 
 
- // yedidel
 
     // --- Step 2: GKR ---
     verifyGKR(); 
@@ -924,7 +922,7 @@ bool verifier::verifyLasso()
     assert (eval_in * gr == previousSum);
 
 
-    // yedidel-lasso: the original GKR batched-opening above (lines 720-916)
+    // lasso-fork: the original GKR batched-opening above (lines 720-916)
     // handles cross-layer claim consistency for the input MLE. Range-check
     // soundness for the GPT-2 quantization auxiliaries (d1, d2, d3, s, dt2)
     // and for the Softmax (t, E) exp-table pair lookups is performed by two
@@ -949,7 +947,7 @@ bool verifier::verifyLasso()
     // grand-product machinery, and update p->proof_size / p->accumulated_lasso_time
     // so the existing `verifier::prove` report stays consistent.
     {
-        // yedidel-lasso: BUILD MARKER + diagnostics. If you run a stale
+        // lasso-fork: BUILD MARKER + diagnostics. If you run a stale
         // binary that does NOT contain this code, none of these messages will
         // appear and `accumulated_lasso_time` will read 0.00. The marker also
         // identifies the exact wiring in this binary so we can be sure the

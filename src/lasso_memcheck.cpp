@@ -1,4 +1,4 @@
-// yedidel-lasso: Spice-style offline memory checking — implementation.
+// lasso-fork: Spice-style offline memory checking — implementation.
 // See lasso_memcheck.hpp for the protocol summary.
 
 #include "lasso_memcheck.hpp"
