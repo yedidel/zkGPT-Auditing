@@ -106,30 +106,47 @@ check that catches the tampering can be observed.
 
 Available scenarios (Variant A -- Surge):
 
-| `LASSO_ADV_TEST` value | Witness tampered |
-|------------------------|-------------------|
-| `NEG`        | Negative value injected before the pre-scan. |
-| `WRONG-E`    | Single subtable evaluation `E_alpha`. |
-| `WRONG-DIM`  | Subtable dimension witness `dim_alpha`. |
-| `WRONG-CTS`  | A read-count entry. |
-| `WRONG-FN`   | A final-count entry. |
+| `LASSO_ADV_TEST` value | Witness tampered | Expected guard |
+|------------------------|-------------------|----------------|
+| `NEG`             | Negative value injected before the pre-scan.            | Phase A pre-scan |
+| `WRONG-E`         | Single subtable evaluation `E_alpha`.                   | Spice multiset identity |
+| `WRONG-DIM`       | Subtable dimension witness `dim_alpha`.                 | Spice multiset / discharge |
+| `WRONG-CTS`       | A read-count entry, between memcheck and Hyrax commit.  | Phase E discharge (GKR final-claim) |
+| `WRONG-FN`        | A final-count entry, between memcheck and Hyrax commit. | Phase E discharge (GKR final-claim) |
+| `WRONG-CTS-POST`  | A read-count entry, **after** its Hyrax commit.         | Hyrax binding/opening |
+| `WRONG-FN-POST`   | A final-count entry, **after** its Hyrax commit.        | Hyrax binding/opening |
 
 Variant B -- Unstructured:
 
-| `LASSO_ADV_TEST` value | Witness tampered |
-|------------------------|-------------------|
-| `WRONG-T-EXP` | A single entry of the committed exp table. |
+| `LASSO_ADV_TEST` value | Witness tampered | Expected guard |
+|------------------------|-------------------|----------------|
+| `WRONG-T-EXP` | A single entry of the committed exp table. | Unstructured discharge (init multiset) |
 
-Each scenario is expected to be rejected at a specific guard. Run for
-example:
+### Property-based randomization (LASSO_ADV_SEED)
+
+Every scenario picks the tampered index from a pseudo-random draw
+seeded by the `LASSO_ADV_SEED` env var (a non-zero unsigned integer).
+When the seed is unset (or set to `0`), the index defaults to `1` for
+backward compatibility with the original harness.
+
+Setting different seeds replays the same tamper class at different
+witness positions. Setting a fixed seed makes the run reproducible.
+Sweeping `N` seeds per scenario gives an empirical coverage statement
+("expected guard fired in `N/N` cells") rather than a single point check.
+
+Run a single scenario at a fixed seed:
 
 ```bash
-LASSO_ADV_TEST=WRONG-E ./build/main_zkgpt   # expected: REJECT at multiset-hash check
-LASSO_ADV_TEST=NEG     ./build/main_zkgpt   # expected: REJECT at pre-scan
+LASSO_ADV_TEST=WRONG-E LASSO_ADV_SEED=42 ./build/main_zkgpt
+LASSO_ADV_TEST=NEG                       ./build/main_zkgpt   # seed defaults to 0 -> index 1
 ```
 
-Results for all six tampering scenarios plus the honest baseline are
-reported in Appendix B (Table 3) of the paper.
+The notebook (`zkGPT_repro.ipynb`, section 12.5) ships a sweep cell
+that runs every scenario at `LASSO_ADV_SEED in {1..N}` and emits a
+coverage matrix to `paper/discussion/adv_coverage.json`.
+
+Results for the full sweep (eight tampering scenarios plus the honest
+baseline) are reported in Appendix B of the paper.
 
 ---
 

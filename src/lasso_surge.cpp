@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <random>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -38,16 +39,27 @@ namespace lasso_surge {
 //   value at a controlled point in the protocol. The harness lets us verify
 //   empirically that each soundness check actually rejects the tampered
 //   input. Recognised values:
-//     NEG          — inject a negative Fr into val[0] just before Phase A
-//                    pre-scan. Expect Phase A pre-scan rejection.
-//     WRONG-E      — flip one E_arr[α][k] after Phase A. Expect Spice
-//                    memory-check (multiset identity) rejection.
-//     WRONG-DIM    — flip one dim_arr[α][k] after Phase A. Expect Spice
-//                    memory-check or discharge rejection.
-//     WRONG-CTS    — flip one read_cts after memcheck builds it. Expect
-//                    discharge mismatch in Phase E.
-//     WRONG-FN     — flip one final_cts after memcheck. Expect discharge
-//                    mismatch in Phase E.
+//     NEG            -- inject a negative Fr into val[0] just before
+//                       Phase A pre-scan. Expect Phase A rejection.
+//     WRONG-E        -- flip one E_arr[a][k] after Phase A. Expect Spice
+//                       multiset identity rejection.
+//     WRONG-DIM      -- flip one dim_arr[a][k] after Phase A. Expect Spice
+//                       memory-check or discharge rejection.
+//     WRONG-CTS      -- flip one read_cts after memcheck. Expect discharge
+//                       mismatch (GKR final-claim) in Phase E.
+//     WRONG-FN       -- flip one final_cts after memcheck. Expect discharge
+//                       mismatch (GKR final-claim) in Phase E.
+//     WRONG-CTS-POST -- flip one read_cts AFTER its Hyrax commit. Expect
+//                       Hyrax binding/opening rejection in Phase E.
+//     WRONG-FN-POST  -- flip one final_cts AFTER its Hyrax commit. Expect
+//                       Hyrax binding/opening rejection in Phase E.
+//   Property-based randomization:
+//     LASSO_ADV_SEED=<uint> selects a random tamper index for each scenario
+//     using std::mt19937 seeded from the value. Re-running with a different
+//     seed exercises a different witness position; running with many seeds
+//     gives an empirical coverage statement ("N/N caught") rather than a
+//     single point check. When LASSO_ADV_SEED is unset (or 0), the index
+//     defaults to 1 for backward-compatibility with the original harness.
 //   When LASSO_ADV_TEST is unset (or "HONEST"), no tampering occurs and the
 //   protocol runs exactly as a baseline.
 namespace {
@@ -56,6 +68,25 @@ inline std::string adv_test_mode() {
     return e ? std::string(e) : "";
 }
 inline bool adv_is(const char *name) { return adv_test_mode() == name; }
+
+// lasso-fork (adv-test): property-based randomization. When LASSO_ADV_SEED
+// is set to a non-zero unsigned integer, the tampered index for every
+// scenario below is drawn from that seed instead of the deterministic
+// fallback (1). This converts the harness from a fixed-index check to a
+// property-based test that can be replayed across many seeds.
+inline u32 adv_seed_value() {
+    const char *s = std::getenv("LASSO_ADV_SEED");
+    return s ? (u32)std::strtoul(s, nullptr, 10) : 0u;
+}
+inline u32 adv_random_index(u32 max_val, u32 fallback) {
+    if (max_val == 0) return 0;
+    u32 seed = adv_seed_value();
+    if (seed == 0) return std::min(fallback, max_val - 1);
+    static u32 last_seed = 0;
+    static std::mt19937 rng;
+    if (seed != last_seed) { rng.seed(seed); last_seed = seed; }
+    return std::uniform_int_distribution<u32>(0, max_val - 1)(rng);
+}
 }  // namespace
 
 namespace {
@@ -418,19 +449,22 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
     // state has a corrupted E. Spice memory checking should reject because
     // the read multiset will contain a tuple whose value disagrees with T.
     if (adv_is("WRONG-E") && out.num_lookups > 1) {
-        E_arr[0][1] = E_arr[0][1] + F_ONE;
+        u32 k = adv_random_index(out.num_lookups, 1);
+        E_arr[0][k] = E_arr[0][k] + F_ONE;
         std::fprintf(stderr,
-            "[adv-test:WRONG-E] Tampered E_arr[α=0][k=1] += 1 after Phase A\n");
+            "[adv-test:WRONG-E] Tampered E_arr[a=0][k=%u] += 1 after Phase A "
+            "(seed=%u)\n", k, adv_seed_value());
         std::fflush(stderr);
     }
 
     // lasso-fork (adv-test:WRONG-DIM): flip one dim_α value. Spice
     // memory-check identity (or the per-multiset discharge) should fail.
     if (adv_is("WRONG-DIM") && out.num_lookups > 1) {
-        dim_arr[0][1] = (dim_arr[0][1] + 1u) & ((1u << SUB_LOG) - 1u);
+        u32 k = adv_random_index(out.num_lookups, 1);
+        dim_arr[0][k] = (dim_arr[0][k] + 1u) & ((1u << SUB_LOG) - 1u);
         std::fprintf(stderr,
-            "[adv-test:WRONG-DIM] Tampered dim_arr[α=0][k=1] += 1 mod 2^%u\n",
-            SUB_LOG);
+            "[adv-test:WRONG-DIM] Tampered dim_arr[a=0][k=%u] += 1 mod 2^%u "
+            "(seed=%u)\n", k, SUB_LOG, adv_seed_value());
         std::fflush(stderr);
     }
 
@@ -581,18 +615,22 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
     // value, but the GKR final-claim was computed from the honest state, so
     // discharge in Phase E will report a final-claim mismatch.
     if (adv_is("WRONG-CTS") && M > 1) {
-        mc_w_arr[0].read_cts[1] = mc_w_arr[0].read_cts[1] + F_ONE;
+        u32 k = adv_random_index(M, 1);
+        mc_w_arr[0].read_cts[k] = mc_w_arr[0].read_cts[k] + F_ONE;
         std::fprintf(stderr,
-            "[adv-test:WRONG-CTS] Tampered read_cts[α=0][k=1] += 1 between memcheck and commit\n");
+            "[adv-test:WRONG-CTS] Tampered read_cts[a=0][k=%u] += 1 between "
+            "memcheck and commit (seed=%u)\n", k, adv_seed_value());
         std::fflush(stderr);
     }
 
     // lasso-fork (adv-test:WRONG-FN): symmetric to WRONG-CTS but on
     // final_cts. Discharge of the gp_final multiset must fail.
     if (adv_is("WRONG-FN") && SUB_N > 1) {
-        mc_w_arr[0].final_cts[1] = mc_w_arr[0].final_cts[1] + F_ONE;
+        u32 j = adv_random_index((u32)SUB_N, 1);
+        mc_w_arr[0].final_cts[j] = mc_w_arr[0].final_cts[j] + F_ONE;
         std::fprintf(stderr,
-            "[adv-test:WRONG-FN] Tampered final_cts[α=0][j=1] += 1 between memcheck and commit\n");
+            "[adv-test:WRONG-FN] Tampered final_cts[a=0][j=%u] += 1 between "
+            "memcheck and commit (seed=%u)\n", j, adv_seed_value());
         std::fflush(stderr);
     }
 
@@ -606,6 +644,32 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
     }
     out.proof_size_bytes += (u64)(NUM_SUB * gens_M.g.size() / 2 * G_BYTE_SIZE);
     out.proof_size_bytes += (u64)(NUM_SUB * gens_N.g.size() / 2 * G_BYTE_SIZE);
+
+    // lasso-fork (adv-test:WRONG-CTS-POST): tamper read_cts AFTER its Hyrax
+    // commit was taken on the honest value. The commit binds to the honest
+    // state, but downstream sumchecks now use the tampered witness, so the
+    // Hyrax opening claim at the discharge challenge point cannot match the
+    // committed polynomial. This exercises the Hyrax binding/opening guard
+    // (distinct from WRONG-CTS, which catches at the GKR final-claim).
+    if (adv_is("WRONG-CTS-POST") && M > 1) {
+        u32 k = adv_random_index(M, 1);
+        mc_w_arr[0].read_cts[k] = mc_w_arr[0].read_cts[k] + F_ONE;
+        std::fprintf(stderr,
+            "[adv-test:WRONG-CTS-POST] Tampered read_cts[a=0][k=%u] += 1 "
+            "AFTER Hyrax commit (seed=%u)\n", k, adv_seed_value());
+        std::fflush(stderr);
+    }
+
+    // lasso-fork (adv-test:WRONG-FN-POST): symmetric to WRONG-CTS-POST but
+    // on final_cts. Hyrax opening on Tk_fn must fail at the discharge point.
+    if (adv_is("WRONG-FN-POST") && SUB_N > 1) {
+        u32 j = adv_random_index((u32)SUB_N, 1);
+        mc_w_arr[0].final_cts[j] = mc_w_arr[0].final_cts[j] + F_ONE;
+        std::fprintf(stderr,
+            "[adv-test:WRONG-FN-POST] Tampered final_cts[a=0][j=%u] += 1 "
+            "AFTER Hyrax commit (seed=%u)\n", j, adv_seed_value());
+        std::fflush(stderr);
+    }
 
     // -----------------------------------------------------------------------
     // Phase D: Surge main sumcheck (NUM_SUB independent eq·E_α sumchecks

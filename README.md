@@ -93,6 +93,37 @@ one is given in Section 5 of `CHANGELOG.md`.
 
 ---
 
+## Rule-based no-LLM baseline
+
+The script [`tools/rule_based_baseline.py`](tools/rule_based_baseline.py) is
+the deterministic, no-LLM baseline reported in Section 5.2 of the paper. It
+scans a target codebase for the canonical patterns associated with the
+soundness guards that `zkml-audit-benchmark` artifacts target (presence of
+Fiat-Shamir transcript binding before each challenge draw, commit-before-
+challenge ordering for lookup arguments, lookup-argument invocation, Spice/
+memcheck companion calls, per-stage output commitment chain). It runs in
+under a second per codebase, has no LLM dependency, and is intended as a
+floor any future LLM-based auditor should clear.
+
+Why include it: reviewers asked for at least one ablation isolating the LLM's
+contribution. The single-agent vs multi-agent comparison in Table 4 of the
+paper is the architecture ablation; this script is the no-LLM ablation,
+giving a deterministic reference point that shows the gap LLM-based reasoning
+must justify.
+
+How to run:
+
+```bash
+python tools/rule_based_baseline.py --codebase /path/to/codebase \
+                                    --report /path/to/output.json
+```
+
+The JSON report includes the per-pattern checklist for each scanned codebase
+and a 0--1 soundness-checklist score. The script depends only on the Python
+standard library (no extra installs).
+
+---
+
 ## License
 
 Released under the same terms as the upstream zkGPT codebase. See

@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <random>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -23,18 +24,34 @@ namespace lasso_unstructured {
 
 // lasso-fork (adv-test): mirror of the harness in lasso_surge.cpp.
 // Recognised LASSO_ADV_TEST values that this module handles:
-//     WRONG-T-EXP — tamper with one entry of the exp-table polynomial
-//                   AFTER the Hyrax commit was taken on its honest value.
-//                   The init / final multiset hashes captured the original
-//                   T value, but the discharge re-opens T at a random
-//                   point against the tampered local copy, so the leaf
-//                   reconstruction must mismatch.
+//     WRONG-T-EXP -- tamper with one entry of the exp-table polynomial T
+//                    AFTER the Hyrax commit was taken on its honest value.
+//                    The init / final multiset hashes captured the original
+//                    T value, but the discharge re-opens T at a random
+//                    point against the tampered local copy, so the leaf
+//                    reconstruction must mismatch.
+// Property-based randomization: LASSO_ADV_SEED=<uint> selects the tamper
+// index via std::mt19937 seeded from the value (0 = fallback to index 1).
 namespace {
 inline std::string adv_test_mode() {
     const char *e = std::getenv("LASSO_ADV_TEST");
     return e ? std::string(e) : "";
 }
 inline bool adv_is(const char *name) { return adv_test_mode() == name; }
+
+inline u32 adv_seed_value() {
+    const char *s = std::getenv("LASSO_ADV_SEED");
+    return s ? (u32)std::strtoul(s, nullptr, 10) : 0u;
+}
+inline u32 adv_random_index(u32 max_val, u32 fallback) {
+    if (max_val == 0) return 0;
+    u32 seed = adv_seed_value();
+    if (seed == 0) return std::min(fallback, max_val - 1);
+    static u32 last_seed = 0;
+    static std::mt19937 rng;
+    if (seed != last_seed) { rng.seed(seed); last_seed = seed; }
+    return std::uniform_int_distribution<u32>(0, max_val - 1)(rng);
+}
 }  // namespace
 
 namespace {
@@ -287,9 +304,11 @@ lasso_core::LassoBenchmark run_exp_lookup(prover *p,
     // mismatch -- graceful rejection without firing a Hyrax binding
     // assertion.
     if (adv_is("WRONG-T-EXP") && N > 1) {
-        T_local[1] = T_local[1] + F_ONE;
+        u32 j = adv_random_index((u32)N, 1);
+        T_local[j] = T_local[j] + F_ONE;
         std::fprintf(stderr,
-            "[adv-test:WRONG-T-EXP] Tampered T_local[1] += 1 before Hyrax commit\n");
+            "[adv-test:WRONG-T-EXP] Tampered T_local[%u] += 1 before Hyrax "
+            "commit (seed=%u)\n", j, adv_seed_value());
         std::fflush(stderr);
     }
 
