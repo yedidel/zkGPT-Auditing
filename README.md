@@ -1,6 +1,6 @@
-# zkGPT (anonymous artifact -- faithful Lasso variants)
+# zkGPT (faithful Lasso variants)
 
-This repository is an anonymous research artifact accompanying our
+This repository is an research artifact accompanying our
 NeurIPS 2026 Datasets & Benchmarks Track submission. It is a fork of
 the publicly available zkGPT framework of Qu et al. (USENIX Security
 2025; cited in the accompanying paper) that replaces the framework's

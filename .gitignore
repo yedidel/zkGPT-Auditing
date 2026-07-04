@@ -1,0 +1,13 @@
+/paper
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+build/
+*.o
+*.a
+*.so
+*.exe
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
