@@ -1,12 +1,12 @@
 # zkGPT (faithful Lasso variants)
 
-This repository is an research artifact accompanying our
+This repository is a research artifact accompanying our
 NeurIPS 2026 Datasets & Benchmarks Track submission. It is a fork of
-the publicly available zkGPT framework of Qu et al. (USENIX Security
-2025; cited in the accompanying paper) that replaces the framework's
-masked range-check wiring with a faithful Lasso lookup pipeline. The
-original unmodified codebase is *not* included here; only our delta
-plus the unmodified files that our delta depends on.
+the zkGPT framework of Qu et al. (USENIX Security 2025; cited in the
+accompanying paper) that replaces the framework's masked range-check
+wiring with a faithful Lasso lookup pipeline. The original unmodified
+codebase is *not* redistributed here; only our delta plus the
+unmodified files that our delta depends on.
 
 The full set of changes relative to upstream is documented in
 [`CHANGELOG.md`](CHANGELOG.md). The motivation, evaluation, and
@@ -14,6 +14,49 @@ adversarial validation are reported in the accompanying paper.
 
 The current artifact targets GPT-2 (12 transformer blocks, 12 attention
 heads, hidden dimension 768, sequence length 64).
+
+---
+
+## Upstream baseline
+
+Every measurement and every soundness finding in this repository refers to
+the Zenodo deposit that the zkGPT paper designates as its artifact:
+
+| | |
+|---|---|
+| DOI | [`10.5281/zenodo.14727819`](https://doi.org/10.5281/zenodo.14727819) |
+| File | `zktransformer.zip` |
+| Size | 668,493 bytes |
+| md5 | `e2d0a05dd4e4c5b1a3dfae42436ff698` |
+| Deposited | 23 January 2025 |
+
+[`zkGPT_repro.ipynb`](zkGPT_repro.ipynb) downloads this deposit, verifies the
+md5 against the value published by Zenodo, and builds from it. No account or
+manual download is required.
+
+### Two upstream distributions exist, and they differ
+
+A GitHub repository, `security-Anonymous/zkGPT`, also exists. It carries a
+single commit dated 27 August 2025, seven months after the Zenodo deposit, and
+it is **not** the same code. It adds a standalone range-proof component that is
+absent from the deposit:
+
+| | Zenodo deposit (audited) | GitHub repository |
+|---|---|---|
+| `src/range_prover.{hpp,cpp}` | absent | present |
+| `src/hyrax_rp.hpp` | absent | present |
+| `verifier::range_prove()` | absent | present |
+| LogUp lookup argument | absent | present |
+| grand-product / memory checking | absent | absent |
+| range enforcement in `verifier.cpp` | `FILTER = 65535` mask | mask plus separate range prover |
+
+`src/main_demo_llm.cpp` in this fork is byte-identical to the copy in the
+Zenodo deposit, which fixes the baseline unambiguously.
+
+We audited the deposit because it is the artifact the paper cites. Readers
+comparing our results against the GitHub tree should expect them not to line
+up: the two releases are not interchangeable, and the notebook asserts that the
+build tree is the deposit rather than the GitHub variant before proceeding.
 
 ---
 

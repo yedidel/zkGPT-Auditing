@@ -15,7 +15,38 @@ the NeurIPS 2026 Datasets & Benchmarks Track.
 
 ## 1. Scope
 
-The original zkGPT implementation enforces nonlinear-layer constraints
+### 1.0 Which upstream release this fork is based on
+
+All statements below refer to the Zenodo deposit
+[`10.5281/zenodo.14727819`](https://doi.org/10.5281/zenodo.14727819)
+(`zktransformer.zip`, md5 `e2d0a05dd4e4c5b1a3dfae42436ff698`, deposited
+23 January 2025), which is the artifact the zkGPT paper designates.
+`src/main_demo_llm.cpp` in this fork is byte-identical to the copy in that
+deposit.
+
+A separate GitHub repository, `security-Anonymous/zkGPT` (single commit,
+27 August 2025), contains a different release of the same work. It adds a
+standalone `range_prover` component implementing a LogUp lookup argument
+with Hyrax commitments (`src/range_prover.{hpp,cpp}`, `src/hyrax_rp.hpp`,
+`verifier::range_prove()`). None of those files, and no occurrence of
+`logup`, `range_prover`, `memcheck`, `spice`, or `grand-product`, appear
+anywhere in the Zenodo deposit.
+
+The findings recorded here are scoped to the deposit. They are not claims
+about the GitHub release, which we have not measured. Two observations
+about that release are worth recording for anyone comparing the two:
+
+1. Its range prover is invoked from `main`, not from the verifier.
+   `range_prover::prove()` returns a `double` holding elapsed prover time,
+   and `verifier::range_prove(double)` stores that value. The only
+   subsequent use of it is `prover_time + range_prover_time` in a printed
+   total, so no proof object crosses the prover-verifier boundary.
+2. `grand-product` and memory-checking subprotocols are absent from that
+   release as well.
+
+### 1.1 The gap in the audited deposit
+
+The deposited zkGPT implementation enforces nonlinear-layer constraints
 (LayerNorm, GeLU, Softmax) by performing a wiring check whose witness
 range is masked with `& 0xFFFF` rather than via a cryptographic lookup
 argument. The 7.2M nonlinear constraints in a 12-block GPT-2 forward
