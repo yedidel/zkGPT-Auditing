@@ -168,8 +168,8 @@ Sweeping `N` seeds per scenario gives an empirical coverage statement
 Run a single scenario at a fixed seed:
 
 ```bash
-LASSO_ADV_TEST=WRONG-E LASSO_ADV_SEED=42 ./build/main_zkgpt
-LASSO_ADV_TEST=NEG                       ./build/main_zkgpt   # seed defaults to 0 -> index 1
+LASSO_ADV_TEST=WRONG-E LASSO_ADV_SEED=42 ./cmake-build-release/src/demo_llm_run
+LASSO_ADV_TEST=NEG                       ./cmake-build-release/src/demo_llm_run   # seed defaults to 0 -> index 1
 ```
 
 The notebook (`zkGPT_repro.ipynb`, section 12.5) ships a sweep cell

@@ -118,21 +118,34 @@ producing the measurements.
 
 ## Reproducing the headline numbers
 
-The measurements reported in Table 2 of the paper (GPT-2, 12 blocks)
-are produced by the default run of the main binary built above. To
-inspect the per-component breakdown shown in Appendix A
-("Per-component cost") run with verbose logging enabled.
+[`REPRODUCTION.md`](REPRODUCTION.md) is the full manifest: it pins the
+upstream baseline by DOI and checksum, gives the exact build and run
+commands, and lists the expected output of every run this repository
+contributes to the paper. The short version follows.
 
-To reproduce a tampering scenario from Appendix B (Table 3), set the
-`LASSO_ADV_TEST` environment variable before launching the binary:
+Build and run:
 
 ```bash
-LASSO_ADV_TEST=NEG     ./build/main_zkgpt   # rejected at pre-scan
-LASSO_ADV_TEST=WRONG-E ./build/main_zkgpt   # rejected at multiset-hash check
+./llm.sh                                    # build and run
+./cmake-build-release/src/demo_llm_run      # run an existing build
 ```
 
-The full list of supported scenarios and the guard that catches each
-one is given in Section 5 of `CHANGELOG.md`.
+The default run reproduces the Table 2 measurements for GPT-2 (12 blocks,
+12 heads, hidden dimension 768, sequence length 64). No arguments are
+needed. The per-component breakdown in Appendix A comes from the same run
+with verbose logging enabled.
+
+To reproduce a tampering scenario from Appendix C (Table 3), set
+`LASSO_ADV_TEST` before launching the binary:
+
+```bash
+LASSO_ADV_TEST=NEG     ./cmake-build-release/src/demo_llm_run  # rejected at pre-scan
+LASSO_ADV_TEST=WRONG-E ./cmake-build-release/src/demo_llm_run  # rejected at Spice multiset identity
+```
+
+All nine scenarios and the guard that catches each are tabulated in
+[`REPRODUCTION.md`](REPRODUCTION.md) section 4, and described in section 5
+of [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
