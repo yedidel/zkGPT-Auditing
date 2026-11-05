@@ -429,12 +429,11 @@ Pack bullet_reduce(G1 gamma, Fr*a,G1*g,int n,G1& G,Fr* x,Fr y,bool need_free) //
     return bullet_reduce(gamma_prime,aprime,gprime,n/2,G,xprime,yprime,true);
 }   
 
-void prove_dot_product(G1 comm_x, G1 comm_y, Fr* a, G1*g ,G1& G,Fr* x,Fr y,int n)  // y= <a,x> , 
+bool prove_dot_product(G1 comm_x, G1 comm_y, Fr* a, G1*g ,G1& G,Fr* x,Fr y,int n)  // y= <a,x> ,
 {
     G1 gamma=comm_x+comm_y;
     Pack p=bullet_reduce(gamma,a,g,n,G,x,y);
-    assert(p.y==p.x*p.a);
-    assert(p.gamma==p.g*p.x+G*p.y);
+    return (p.y==p.x*p.a) && (p.gamma==p.g*p.x+G*p.y);
 }
 static ThreadSafeQueue<int> workerq,endq;
 
@@ -497,7 +496,7 @@ Fr prover_evaluate(Fr*w ,Fr*r,G1& G,G1* g, Fr*L,Fr*R,int l)  // nlogn brute forc
 }
 namespace hyrax
 {
-pair<double,double> open(Fr*w,Fr*r,Fr eval,G1&G,G1*g,Fr*L,Fr*R,G1*tk,int l)
+pair<double,double> open(Fr*w,Fr*r,Fr eval,G1&G,G1*g,Fr*L,Fr*R,G1*tk,int l,bool* bound_ok)
 {
     double prover_time=0,verifier_time=0;
     int halfl=l/2;
@@ -514,7 +513,8 @@ pair<double,double> open(Fr*w,Fr*r,Fr eval,G1&G,G1*g,Fr*L,Fr*R,G1*tk,int l)
     prover_time+=verf.elapse_sec();
     verifier_time+=verf.elapse_sec();
     verf.start();
-    prove_dot_product(tprime, G*eval, L, g , G,RT,eval,colnum);
+    bool bok=prove_dot_product(tprime, G*eval, L, g , G,RT,eval,colnum);
+    if(bound_ok) *bound_ok = bok;
     verf.stop();
     prover_time+=verf.elapse_sec();
     verifier_time+=blt_vtime;

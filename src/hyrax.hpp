@@ -52,14 +52,14 @@ G1 compute_Tprime(int l,Fr* L,G1* Tk) ;
 G1 compute_LT(Fr*w ,Fr*L,int l,G1*g,Fr*& ret);
 G1 gen_gi(G1* g,int n);
 Pack bullet_reduce(G1 gamma, Fr*a,G1*g,int n,G1& G,Fr* x,Fr y,bool need_free=false);
-void prove_dot_product(G1 comm_x, G1 comm_y, Fr* a, G1*g ,G1& G,Fr* x,Fr y,int n);
+bool prove_dot_product(G1 comm_x, G1 comm_y, Fr* a, G1*g ,G1& G,Fr* x,Fr y,int n);
 G1* prover_commit(ll* w, G1* g, int l,int thread_n=1);
 G1* prover_commit(Fr* w, G1* g, int l,int thread=1);
 G1* prover_commit(int* w, G1* g, int l,int thread=1);
 Fr prover_evaluate(Fr*w ,Fr*r,G1& G,G1* g, Fr*L,Fr*R,int l);  // nlogn brute force 
 namespace hyrax
 {
-pair<double,double> open(Fr*w,Fr*r,Fr eval,G1&G,G1*g,Fr*L,Fr*R,G1*tk,int l);
+pair<double,double> open(Fr*w,Fr*r,Fr eval,G1&G,G1*g,Fr*L,Fr*R,G1*tk,int l,bool* bound_ok=nullptr);
 }
 
 template <typename T>

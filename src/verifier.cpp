@@ -236,8 +236,11 @@ void verifier::prove(int commit_thread)
 
     // --- Step 3: Lasso ---
     // Whether serial or parallel, this function MUST set p->accumulated_lasso_time
-    verifyLasso(); 
+    bool lasso_ok = verifyLasso();
     double lasso_snapshot = p->accumulated_lasso_time;
+    if (!lasso_ok) {
+        fprintf(stderr, "[verifier] PROOF REJECTED: Lasso soundness check failed.\n");
+    }
 
     // --- Step 4: Final Opening ---
     openCommit();
@@ -946,6 +949,7 @@ bool verifier::verifyLasso()
     // helper rather than any masking, share the Spice memory-checking + GKR
     // grand-product machinery, and update p->proof_size / p->accumulated_lasso_time
     // so the existing `verifier::prove` report stays consistent.
+    bool lasso_sound = true;
     {
         // lasso-fork: BUILD MARKER + diagnostics. If you run a stale
         // binary that does NOT contain this code, none of these messages will
@@ -1004,14 +1008,13 @@ bool verifier::verifyLasso()
             std::cerr << "[verifyLasso] Unstructured exp-table Lasso FAILED — "
                          "refusing to accept proof.\n";
         }
+        lasso_sound = bench_A.sound && bench_B.sound;
         // Fall through to the existing teardown so the rest of the framework
         // sees a clean shutdown; the global verdict is reported by prove().
     }
 
     vtimer.stop();
     verifier_time+=vtimer.elapse_sec();
-
-    fprintf(stderr, "All verification passed!!\n");
 
     beta_g.clear();
     beta_gs.clear();
@@ -1023,9 +1026,14 @@ bool verifier::verifyLasso()
     sig_u.clear();
     sig_v.clear();
 
+    if (!lasso_sound) {
+        fprintf(stderr, "[verifyLasso] soundness checks FAILED, rejecting proof.\n");
+        return false;
+    }
+    fprintf(stderr, "All verification passed!!\n");
     return true;
 }
-__int128 convertx(Fr x)	
+__int128 convertx(Fr x)
 {	
     int sign=0;	
     Fr abs;	
