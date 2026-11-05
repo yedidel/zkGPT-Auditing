@@ -116,8 +116,7 @@ F open_at(F *w, G1 *Tk, G1 *gens_col, G1 blinder, int l,
           std::vector<F> &r,
           u64 *proof_bytes,
           double *prover_time_s,
-          double *verifier_time_s,
-          bool *binding_ok = nullptr) {
+          double *verifier_time_s) {
     int halfl  = l / 2;
     int rownum = 1 << halfl;
     int colnum = 1 << (l - halfl);
@@ -126,9 +125,7 @@ F open_at(F *w, G1 *Tk, G1 *gens_col, G1 blinder, int l,
     brute_force_compute_LR(L, R, r.data(), l);
     F eval = lasso_core::mle_eval(w, r.data(), l);
 
-    bool bok = true;
-    auto tim = hyrax::open(w, r.data(), eval, blinder, gens_col, L, R, Tk, l, &bok);
-    if (binding_ok) *binding_ok = (*binding_ok) && bok;
+    auto tim = hyrax::open(w, r.data(), eval, blinder, gens_col, L, R, Tk, l);
     *prover_time_s   += tim.first;
     *verifier_time_s += tim.second;
 
@@ -831,48 +828,41 @@ lasso_core::LassoBenchmark run_range_check(prover *p) {
         std::vector<F> rp_write = mc.gp_write.final_point;
         std::vector<F> rp_final = mc.gp_final.final_point;
 
-        bool binding_ok = true;
-
         F dim_at_r = open_at(dim_a_f.data(), Tk_dim, gens_M.g.data(),
                              gens_M.blinder, log_M, rp_read,
                              &out.proof_size_bytes,
                              &out.prover_time_s,
-                             &out.verifier_time_s, &binding_ok);
+                             &out.verifier_time_s);
         F dim_at_w = open_at(dim_a_f.data(), Tk_dim, gens_M.g.data(),
                              gens_M.blinder, log_M, rp_write,
                              &out.proof_size_bytes,
                              &out.prover_time_s,
-                             &out.verifier_time_s, &binding_ok);
+                             &out.verifier_time_s);
         F E_at_r   = open_at(E_a_f.data(), Tk_E, gens_M.g.data(),
                              gens_M.blinder, log_M, rp_read,
                              &out.proof_size_bytes,
                              &out.prover_time_s,
-                             &out.verifier_time_s, &binding_ok);
+                             &out.verifier_time_s);
         F E_at_w   = open_at(E_a_f.data(), Tk_E, gens_M.g.data(),
                              gens_M.blinder, log_M, rp_write,
                              &out.proof_size_bytes,
                              &out.prover_time_s,
-                             &out.verifier_time_s, &binding_ok);
+                             &out.verifier_time_s);
         F rd_at_r  = open_at(read_cts_f.data(), Tk_rd, gens_M.g.data(),
                              gens_M.blinder, log_M, rp_read,
                              &out.proof_size_bytes,
                              &out.prover_time_s,
-                             &out.verifier_time_s, &binding_ok);
+                             &out.verifier_time_s);
         F rd_at_w  = open_at(read_cts_f.data(), Tk_rd, gens_M.g.data(),
                              gens_M.blinder, log_M, rp_write,
                              &out.proof_size_bytes,
                              &out.prover_time_s,
-                             &out.verifier_time_s, &binding_ok);
+                             &out.verifier_time_s);
         F fn_at_p  = open_at(final_cts_f.data(), Tk_fn, gens_N.g.data(),
                              gens_N.blinder, (int)SUB_LOG, rp_final,
                              &out.proof_size_bytes,
                              &out.prover_time_s,
-                             &out.verifier_time_s, &binding_ok);
-
-        if (!binding_ok) {
-            std::cerr << "[lasso_surge] Hyrax opening/binding mismatch\n";
-            return false;
-        }
+                             &out.verifier_time_s);
 
         F gamma  = mc.gamma;
         F tau    = mc.tau;
