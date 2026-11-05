@@ -118,15 +118,21 @@ a seed drawn from the run.
 | `WRONG-DIM` | flip one `dim_alpha[k]` after Phase A | rejected by Spice multiset / discharge |
 | `WRONG-CTS` | flip one `read_cts[k]` between memcheck and commit | rejected at Phase E discharge (GKR final claim) |
 | `WRONG-FN` | flip one `final_cts[j]` between memcheck and commit | rejected at Phase E discharge (GKR final claim) |
-| `WRONG-CTS-POST` | flip one `read_cts[k]` **after** its Hyrax commit | rejected by Hyrax opening (binding) |
-| `WRONG-FN-POST` | flip one `final_cts[j]` **after** its Hyrax commit | rejected by Hyrax opening (binding) |
+| `WRONG-CTS-POST` | flip one `read_cts[k]` **after** its commitment | rejected at Phase E discharge (GKR final claim) |
+| `WRONG-FN-POST` | flip one `final_cts[j]` **after** its commitment | rejected at Phase E discharge (GKR final claim) |
 | `WRONG-T-EXP` | flip one `T[j]` before Hyrax commit (Unstructured) | rejected at Unstructured discharge (init multiset) |
 
 The eight tamper scenarios exercise four structurally distinct guard families:
 input range validation, Spice multiset identity, GKR final-claim discharge, and
-Hyrax binding. A scenario that passed would indicate a check that is present in
-the code but never evaluated, which is the failure mode this harness exists to
-rule out.
+the Unstructured variant's per-multiset leaf reconstruction. A scenario that
+passed would indicate a check that is present in the code but never evaluated,
+which is the failure mode this harness exists to rule out. The two post-commit
+scenarios are rejected at the final-claim discharge rather than at the
+commitment: the Hyrax opening that would bind each committed counter is guarded
+only by a C++ `assert` that the release build omits and that does not hold on
+honest input, so it does not function as a runtime guard. Restoring a working
+opening check is left as future work; the top-level verdict now rejects the
+proof explicitly whenever any sub-check fails.
 
 This harness covers zkGPT only. The zkLLM fork has no equivalent runtime
 harness, so its findings rest on the protocol-to-implementation mapping rather
