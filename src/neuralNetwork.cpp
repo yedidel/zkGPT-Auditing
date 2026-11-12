@@ -2,6 +2,7 @@
 // Created by 69029 on 3/16/2021.
 //
 #undef NDEBUG
+#include <cstdlib>
 #include "neuralNetwork.hpp"
 #include "utils.hpp"
 #include "global_var.hpp"
@@ -68,6 +69,7 @@ void Out_group(Fr a,Fr b,Fr c)
 // input:   [data]
 //          [[conv_kernel || relu_conv_bit_decmp]{sec.size()}[max_pool]{if maxPool}[pool_bit_decmp]]{conv_section.size()}
 //          [fc_kernel || relu_fc_bit_decmp]
+static bool _forge_round_done=false;
 void neuralNetwork::initParam(prover &pr,int depth) 
 {
     total_in_size = 0;
@@ -393,6 +395,18 @@ void neuralNetwork::create(prover &pr, bool merge)
     pr.mat_val=mat_values;
 
     cout << "[Log] Total Lasso Range Indices collected: " << prover::lasso_range_indices.size() << endl;
+    if (const char* _fe = std::getenv("FORGE_RANGE")) {
+        long _w = atol(_fe); size_t _n = prover::lasso_range_indices.size();
+        int _sh = std::getenv("FORGE_SHIFT") ? atoi(std::getenv("FORGE_SHIFT")) : 16;
+        Fr _d = Fr(1); for (int _k=0;_k<_sh;_k++) _d = _d + _d;
+        if (_n > 0) {
+            size_t _pos = (_w < 0) ? (size_t)((long)_n + _w) : (size_t)_w;
+            if (_pos >= _n) _pos = _n - 1;
+            unsigned int _fi = prover::lasso_range_indices[_pos];
+            pr.val[0][_fi] = pr.val[0][_fi] + _d;
+            cout << "[FORGE_RANGE] pos=" << _pos << " val[0][" << _fi << "] +2^" << _sh << endl;
+        }
+    }
 
     T.start();
     pr.commitInput(pr.gens,32);  //commit weight
@@ -721,12 +735,12 @@ void neuralNetwork::ln_checker_layer2(layer &circuit, i64 &layer_id, int ln_id, 
     calcNormalLayer(circuit, layer_id);
     for (i64 i = 0; i < block_len; i++)
     {
-        assert(!val[layer_id][i].isNegative());  //only need to check the sparse items of these
+        if(std::getenv("FORGE_ROUND")){ if(val[layer_id][i].isNegative()) std::fprintf(stderr,"[malicious-prover] stripped assert (isNegative) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(!val[layer_id][i].isNegative()); }  //only need to check the sparse items of these
         assert(!val[layer_id][block_len+i].isNegative());  
         if(i<block_len)
         {
             if(sparsity_map[i]==false)
-                assert(val[layer_id][i].isZero());
+                if(std::getenv("FORGE_ROUND")){ if(!val[layer_id][i].isZero()) std::fprintf(stderr,"[malicious-prover] stripped assert (isZero) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(val[layer_id][i].isZero()); }
             if(sparsity_map[i]==false)
                 assert(val[layer_id][i+block_len].isZero());
         }
@@ -1072,7 +1086,7 @@ void neuralNetwork::roundLayer(layer &circuit, i64 &layer_id, float scale,bool* 
     {
         int p=i;
         int q=i+orgsize+20;
-        assert(val[layer_id][i].isZero());   
+        if(std::getenv("FORGE_ROUND")){ if(!val[layer_id][i].isZero()) std::fprintf(stderr,"[malicious-prover] stripped assert (isZero) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(val[layer_id][i].isZero()); }   
     }
     layer_id++;
 }
@@ -1198,6 +1212,24 @@ void neuralNetwork::softmax_layer_1(layer &circuit, i64 &layer_id,float SQ,float
                 val[0][E_off]=table[tj];
                 val[0][dt2_off]=Fr(c1*(1<<(e1+eprime+1))*pj_+(1<<eprime)-tj*(1<<(eprime+1)))*Fr(-c1*(1<<(e1+eprime+1))*pj_+(1<<eprime)+tj*(1<<(eprime+1)));
                 val[0][sum_E_offset]+=table[tj];
+                // FORGE_ROUND: force ONE wrong Softmax rounding (tj -> tj+1).
+                // dt2 becomes NEGATIVE (wrong rounding); now_off=term1*term2-dt2
+                // stays 0 (GKR satisfied) because dt2 is set to the consistent
+                // product and the circuit recomputes term1,term2 from the forged
+                // t_off. E=table[tj+1] keeps the exp-lookup consistent. Only the
+                // range-check's non-negativity can catch this.
+                if (std::getenv("FORGE_ROUND") && !_forge_round_done && tj+1 < 655360) {
+                    ll tjb = tj + 1;
+                    val[0][t_off]   = tjb;
+                    val[0][E_off]   = table[tjb];
+                    val[0][dt2_off] = Fr(c1*(1<<(e1+eprime+1))*pj_+(1<<eprime)-tjb*(1<<(eprime+1)))*Fr(-c1*(1<<(e1+eprime+1))*pj_+(1<<eprime)+tjb*(1<<(eprime+1)));
+                    if (std::getenv("FORGE_ROUND2")) val[0][dt2_off] = Fr(1); // FAKE positive dt2 -> tests now_off/GKR
+                    val[0][sum_E_offset] += (table[tjb] - table[tj]);
+                    _forge_round_done = true;
+                    std::cout << "[FORGE_ROUND] tj " << tj << " -> " << tjb
+                              << "  dt2_off=" << dt2_off
+                              << "  dt2=" << convert(val[0][dt2_off]) << std::endl;
+                }
                 
                 prover::lasso_range_indices.push_back(dt2_off);
                 //============================
@@ -1264,11 +1296,11 @@ void neuralNetwork::softmax_layer_1(layer &circuit, i64 &layer_id,float SQ,float
     calcNormalLayer(circuit, layer_id);
     for(int i=circuit.zero_start_id;i<val[layer_id].size();i++)
     {
-        assert(val[layer_id][i].isZero());
+        if(std::getenv("FORGE_ROUND")){ if(!val[layer_id][i].isZero()) std::fprintf(stderr,"[malicious-prover] stripped assert (isZero) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(val[layer_id][i].isZero()); }
     }
     for(int i=HEAD*len*HSIZE;i<circuit.zero_start_id;i++)
     {
-        assert(!val[layer_id][i].isNegative());
+        if(std::getenv("FORGE_ROUND")){ if(val[layer_id][i].isNegative()) std::fprintf(stderr,"[malicious-prover] stripped assert (isNegative) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(!val[layer_id][i].isNegative()); }
     }
     layer_id++;
 }
@@ -1341,11 +1373,11 @@ void neuralNetwork::softmax_layer_2(layer &circuit, i64 &layer_id,float SQ,float
     calcNormalLayer(circuit, layer_id);
     for(int i=circuit.zero_start_id;i<val[layer_id].size();i++)
     {
-        assert(val[layer_id][i].isZero());
+        if(std::getenv("FORGE_ROUND")){ if(!val[layer_id][i].isZero()) std::fprintf(stderr,"[malicious-prover] stripped assert (isZero) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(val[layer_id][i].isZero()); }
     }
     for(int i=0;i<circuit.zero_start_id;i++)
     {
-        assert(!val[layer_id][i].isNegative());
+        if(std::getenv("FORGE_ROUND")){ if(val[layer_id][i].isNegative()) std::fprintf(stderr,"[malicious-prover] stripped assert (isNegative) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(!val[layer_id][i].isNegative()); }
     }
     layer_id++;
     
@@ -1384,7 +1416,7 @@ void neuralNetwork::softmax_layer_3(layer &circuit, i64 &layer_id,float SQ,float
     calcNormalLayer(circuit, layer_id);
     for(int i=circuit.zero_start_id;i<val[layer_id].size();i++)
     {
-        assert(val[layer_id][i].isZero());
+        if(std::getenv("FORGE_ROUND")){ if(!val[layer_id][i].isZero()) std::fprintf(stderr,"[malicious-prover] stripped assert (isZero) layer=%lld i=%d\n",(long long)layer_id,i); } else { assert(val[layer_id][i].isZero()); }
     }
     layer_id++;
     q_offset=orgsize+10+HEAD*2*len+4*HEAD*len*(len+1)/2+HEAD*len*HSIZE; 
