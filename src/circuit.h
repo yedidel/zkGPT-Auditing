@@ -50,6 +50,7 @@ public:
 
     // bit decomp related
     u32 zero_start_id;
+    std::vector<std::pair<unsigned int,unsigned int> > zero_intervals; // lasso-fork: scattered zero-regions after merge
 
     std::vector<uniGate> uni_gates;
 	std::vector<binGate> bin_gates;

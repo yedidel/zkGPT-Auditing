@@ -160,6 +160,10 @@ void prover::sumcheckInitPhase1(const F &relu_rou_0)
     prove_timer.start();
     
     initBetaTable(beta_g, cur.bit_length, r_0, r_1, alpha, beta);
+    for (size_t _iv = 0; _iv < cur.zero_intervals.size(); ++_iv)
+        for (u32 _g = cur.zero_intervals[_iv].first; _g < cur.zero_intervals[_iv].second && _g < beta_g.size(); ++_g)
+            beta_g[_g] = beta_g[_g] * relu_rou;  // prover-side zero fold
+
     
     if(cur.uni_interval.size()>=2)
     {

@@ -86,6 +86,13 @@ void verifier::betaInitPhase1(u8 depth, const F &alpha, const F &beta, const vec
             if (C.circuit[depth].zero_start_id < C.circuit[depth].size)
                 for (u32 g = C.circuit[depth].zero_start_id; g < 1ULL << C.circuit[depth].bit_length; ++g)
                     beta_g[g] = beta_g[g] * relu_rou;
+            for (size_t _iv = 0; _iv < C.circuit[depth].zero_intervals.size(); ++_iv) {
+                unsigned int _lo = C.circuit[depth].zero_intervals[_iv].first;
+                unsigned int _hi = C.circuit[depth].zero_intervals[_iv].second;
+                if (_hi > (unsigned int)beta_g.size()) _hi = (unsigned int)beta_g.size();
+                if (_lo > (unsigned int)beta_g.size()) _lo=(unsigned int)beta_g.size();
+                for (u32 g = _lo; g < _hi; ++g) beta_g[g] = beta_g[g] * relu_rou;
+            }
             beta_u.resize(1ULL << C.circuit[depth].max_bl_u);
             initBetaTable(beta_u, C.circuit[depth].max_bl_u, r_u[depth].begin(), F_ONE);
     
@@ -230,9 +237,10 @@ void verifier::prove(int commit_thread)
 
 
     // --- Step 2: GKR ---
-    verifyGKR(); 
+    bool gkr_ok = verifyGKR();
     // This is the absolute CPU time spent on GKR arithmetic
-    double gkr_snapshot = prover_time; 
+    double gkr_snapshot = prover_time;
+    if (!gkr_ok) { fprintf(stderr, "[verifier] PROOF REJECTED: GKR verification failed.\n"); return; }
 
     // --- Step 3: Lasso ---
     // Whether serial or parallel, this function MUST set p->accumulated_lasso_time
@@ -553,7 +561,7 @@ bool verifier::verifyGKR()
         prover_time+=ptimer.elapse_sec();
         
         // phase 1
-        if (cur.zero_start_id < cur.size)
+        if (cur.zero_start_id < cur.size || !cur.zero_intervals.empty())
         {
             relu_rou.setByCSPRNG();
         }

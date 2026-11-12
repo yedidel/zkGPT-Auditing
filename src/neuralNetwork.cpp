@@ -247,6 +247,8 @@ void neuralNetwork::merge_layer(prover &pr,i64 layer_id)
             if(tos==os1)
                 offset[os1]+=pr.C.circuit[j].size;
         }
+        if (pr.C.circuit[i].zero_start_id < (u32)pr.C.circuit[i].size)
+            pr.C.circuit[os].zero_intervals.emplace_back((unsigned int)(offset[os]+pr.C.circuit[i].zero_start_id),(unsigned int)(offset[os]+pr.C.circuit[i].size));
         pr.C.circuit[os].uni_interval.emplace_back(make_pair(pr.C.circuit[os].uni_gates.size(),pr.C.circuit[os].uni_gates.size()+pr.C.circuit[i].uni_gates.size()));
         for(auto g=pr.C.circuit[i].uni_gates.begin();g!=pr.C.circuit[i].uni_gates.end();g++)
         {
