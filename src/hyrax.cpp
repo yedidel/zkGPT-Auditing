@@ -341,7 +341,13 @@ G1 compute_RT(Fr *w, Fr *R, int l, G1 *g, Fr *&ret) // L is row number length
 
 G1 gen_gi(G1* g,int n)
 {
+    // FIX (completeness): `base` was default-constructed and left UNINITIALISED.
+    // All Pedersen generators g[i]=base*tmp and the blinder were derived from
+    // garbage memory, so mcl's GLV-based mulVec (used only for vectors >=2048)
+    // produced code-path-inconsistent results -> Hyrax binding rejected honest
+    // openings at log_M=23. Initialise base to a valid, fixed on-curve generator.
     G1 base;
+    mcl::bn::hashAndMapToG1(base, "zkgpt-hyrax-generator-base", 26);
     for(int i=0;i<n;i++)
     {
         Fr tmp;

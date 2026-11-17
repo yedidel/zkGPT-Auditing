@@ -62,12 +62,16 @@ vendor it; the notebook fetches it, or clone it manually into `3rd/`.
 ## 3. Headline cost measurements (paper Table 2)
 
 ```bash
-./cmake-build-release/src/demo_llm_run
+LASSO_ADV_TEST=HONEST ./cmake-build-release/src/demo_llm_run
 ```
 
 Default configuration is GPT-2: 12 transformer blocks, 12 attention heads,
-hidden dimension 768, sequence length 64. No arguments or environment variables
-are required.
+hidden dimension 768, sequence length 64. Use `LASSO_ADV_TEST=HONEST` for the
+baseline headline run: it exercises the full corrected Lasso pipeline with no
+tampering and prints `All verification passed!!`. The bare invocation (no
+`LASSO_ADV_TEST`) currently segfaults in a separate default code path after
+printing `Verification fail, phase1, circuit 3, current bit 0`; it is not the
+headline measurement, and fixing that legacy path is left for a later cleanup.
 
 Machine for the reported numbers: single Lambda Cloud A100-SXM4-40GB instance,
 host AMD EPYC CPU, BN254 curve via `mcl-bn254`, 32 OpenMP threads. zkGPT proving
@@ -84,6 +88,11 @@ prover 49.1 s, Unstructured prover 2.7 s. Verifier time is dominated by
 approximately 43 Hyrax openings, which is intrinsic to Lasso verification
 rather than to this implementation, since Hyrax verification scales with
 witness size.
+
+**Most recent reproduction (2026-11-11).** A re-run on the Lambda host
+reproduced the proof size exactly (1284.2 kB) and the prover/verifier times
+within a few percent (105.5 s / 312.7 s), consistent with ordinary machine
+variance.
 
 **Known documentation fault, now corrected.** Earlier revisions of this
 repository referred to the binary as `./build/main_zkgpt`. That path never
@@ -110,6 +119,12 @@ LASSO_ADV_TEST=<SCENARIO> ./cmake-build-release/src/demo_llm_run
 `LASSO_ADV_SEED` optionally fixes the index of the tampered element; omit it for
 a seed drawn from the run.
 
+The binary exits with status 0 whether a proof is accepted or rejected, so the
+verdict lives in the log text, not the exit code. An accepted run prints
+`All verification passed!!` with `Soundness verdict: SOUND`; a rejected run
+prints `PROOF REJECTED: Lasso soundness check failed` with `Soundness verdict:
+FAILED` on the failing variant. Parse the log, not `$?`.
+
 | `LASSO_ADV_TEST` | Tamper | Expected outcome |
 |---|---|---|
 | `HONEST` | none (baseline) | passes, both variants sound |
@@ -133,6 +148,34 @@ only by a C++ `assert` that the release build omits and that does not hold on
 honest input, so it does not function as a runtime guard. Restoring a working
 opening check is left as future work; the top-level verdict now rejects the
 proof explicitly whenever any sub-check fails.
+
+### Hyrax generator-initialisation fix (completeness)
+
+The opening guard above is now backed by a working check. `gen_gi` in
+`src/hyrax.cpp` previously left its base generator uninitialised (`G1 base;`
+with no assignment), so every Pedersen generator `g[i] = base * tmp` and the
+blinder were derived from garbage memory. mcl computes `base * tmp` through a
+GLV endomorphism decomposition that is used only for larger vectors, which is
+why the effect appears at `log_M = 23` and not at the smaller `log_N = 16`
+path: on an off-curve garbage point that decomposition returns results that
+disagree between code paths, so `Sum R[i]*Tk[i]` and `Sum g[j]*RT[j]` differ
+and the binding check rejects even HONEST openings. The result was a
+completeness bug: the Surge Hyrax discharge rejected honest input at
+`log_M = 23` (all four per-subtable discharges `ok=FALSE`, `PROOF REJECTED`),
+while the Section 3 cost numbers were unaffected because they measure the work
+of attempting the openings, not the verdict. The one-line fix initialises
+`base` to a fixed on-curve generator:
+
+```cpp
+mcl::bn::hashAndMapToG1(base, "zkgpt-hyrax-generator-base", 26);
+```
+
+On the fixed code the honest run passes (Surge `sound=TRUE`, all four
+discharges `ok=TRUE`), and all six `WRONG-*` scenarios still `PROOF REJECTED`,
+with `WRONG-CTS-POST` and `WRONG-FN-POST` caught specifically by the Hyrax
+opening/binding check, confirming the restored binding enforces rather than
+being merely wired in. Rebuild `demo_llm_run` from source after this change; a
+stale binary predating the fix masks it.
 
 This harness covers zkGPT only. The zkLLM fork has no equivalent runtime
 harness, so its findings rest on the protocol-to-implementation mapping rather
